@@ -1,6 +1,7 @@
 # Gym Member Segmentation
 
 [![Case Study](https://img.shields.io/badge/Case_Study-Read_the_page-111111?style=for-the-badge)](https://racheltran184.github.io/Python-Project-3/)
+
 [![Python](https://img.shields.io/badge/Python-scikit--learn_·_pandas-3776AB?style=for-the-badge&logo=python&logoColor=white)](#how-to-run)
 
 **Two kinds of member, one life stage apart.** K-means++ and agglomerative clustering on 2,000 gym members, then stress-tested six ways. Every method finds the same two segments, but they sit on one life-stage axis: where members live already sorts them, and none of it needs a member's gender or marital status.
