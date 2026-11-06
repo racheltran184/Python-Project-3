@@ -1,0 +1,1581 @@
+<!DOCTYPE html>
+<html lang="en-AU" data-theme="light">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Gym Member Segmentation · Clustering | Rachel Tran</title>
+  <meta name="description" content="Case study: k-means++ and agglomerative clustering on 2,000 gym members, stress-tested six ways. Every method finds the same two segments on one life-stage axis, where members live already sorts them, and none of it needs gender or marital status; short- and long-term actions for marketing, club and data teams."/>
+  <meta name="author" content="Rachel Tran"/>
+  <meta property="og:type" content="article"/>
+  <meta property="og:title" content="Two kinds of member, one life stage apart · Rachel Tran"/>
+  <meta property="og:description" content="Customer segmentation of 2,000 gym members: why every method finds the same two segments, what sorts them, and what marketing, club and data teams can do next."/>
+  <meta property="og:url" content="https://racheltran184.github.io/Python-Project-3/"/>
+  <meta property="og:image" content="https://racheltran184.github.io/Python-Project-3/gym-segmentation.jpg"/>
+  <meta name="twitter:card" content="summary_large_image"/>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%230d0d0d'/%3E%3Ctext x='32' y='45' font-family='Georgia,serif' font-size='38' font-style='italic' font-weight='700' text-anchor='middle' fill='%23ffffff'%3ER%3C/text%3E%3C/svg%3E"/>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;0,900;1,700&family=Outfit:wght@300;400;500;600&display=swap" rel="stylesheet"/>
+  <script>
+    // Set the theme before first paint: saved choice, else the OS setting.
+    (function () {
+      var t = null;
+      try { t = localStorage.getItem('rt-theme'); } catch (e) {}
+      if (t !== 'light' && t !== 'dark') t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+      document.documentElement.setAttribute('data-theme', t);
+    })();
+  </script>
+  <style>
+    /* ── LIGHT / DARK TOKENS (same as the portfolio) ── */
+    :root, [data-theme="light"] {
+      --white: #ffffff;
+      --off: #f9f9f7;
+      --black: #0d0d0d;
+      --mid: #555;
+      --light: #aaa;
+      --border: #e8e8e8;
+      --accent: #0d0d0d;
+      --tag-bg: #f3f3f1;
+      --serif: 'Playfair Display', Georgia, serif;
+      --sans: 'Outfit', sans-serif;
+      --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      --surface: #f3f3f1;
+      --nav-bg: rgba(255,255,255,0.92);
+      /* chart roles: ink = the data, ctx = de-emphasised context */
+      --viz-ink: #0d0d0d;
+      --viz-ctx: #a9a7a1;
+      --viz-muted: #706e68;
+      --viz-grid: #e8e8e8;
+      --viz-axis: #c4c3bd;
+      --outline: #d2d1cc;
+    }
+    [data-theme="dark"] {
+      --white: #0e0e0d;
+      --off: #141413;
+      --black: #eeecea;
+      --mid: #9e9c96;
+      --light: #5a5955;
+      --border: #2a2a28;
+      --accent: #eeecea;
+      --tag-bg: #1e1e1c;
+      --surface: #1a1a18;
+      --nav-bg: rgba(14,14,13,0.92);
+      --viz-ink: #eeecea;
+      --viz-ctx: #5c5a55;
+      --viz-muted: #918f89;
+      --viz-grid: #2a2a28;
+      --viz-axis: #45443f;
+      --outline: #3a3a37;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; scroll-padding-top: 70px; }
+    body {
+      font-family: var(--sans);
+      background: var(--white);
+      color: var(--black);
+      font-size: 16px;
+      line-height: 1.6;
+      overflow-x: hidden;
+      transition: background .3s, color .3s;
+    }
+    a { color: inherit; }
+    .skip { position: absolute; left: -999px; top: 0; background: var(--black); color: var(--white); padding: .6rem 1rem; z-index: 400; }
+    .skip:focus { left: 1rem; top: .6rem; }
+    :focus-visible { outline: 2px solid var(--black); outline-offset: 3px; }
+
+    /* ─── NAV ─── */
+    nav {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 200;
+      background: var(--nav-bg);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      border-bottom: 1px solid var(--border);
+      height: 62px;
+      display: flex; align-items: center;
+      padding: 0 6vw;
+      justify-content: space-between;
+    }
+    .nav-logo { font-family: var(--serif); font-size: 1.05rem; font-weight: 700; color: var(--black); text-decoration: none; letter-spacing: 0.01em; }
+    .nav-logo span { font-family: var(--sans); font-weight: 400; font-size: .78rem; color: var(--mid); margin-left: .5rem; letter-spacing: .02em; }
+    .nav-links { display: flex; gap: 1.9rem; list-style: none; }
+    .nav-links a {
+      font-size: 0.78rem; font-weight: 500;
+      letter-spacing: 0.07em; text-transform: uppercase;
+      color: var(--mid); text-decoration: none;
+      transition: color 0.2s;
+    }
+    .nav-links a:hover, .nav-links a.active { color: var(--black); }
+    .nav-right { display: flex; align-items: center; gap: 0.75rem; }
+    .theme-toggle {
+      width: 38px; height: 38px;
+      display: inline-flex; align-items: center; justify-content: center;
+      border-radius: 50%;
+      border: 1.5px solid var(--border);
+      background: transparent; color: var(--mid);
+      cursor: pointer; transition: border-color .2s, color .2s, background .2s;
+    }
+    .theme-toggle:hover { border-color: var(--black); color: var(--black); background: var(--off); }
+    .nav-cta {
+      font-size: 0.8rem; font-weight: 600;
+      letter-spacing: 0.06em; text-transform: uppercase;
+      background: var(--black); color: var(--white);
+      padding: 0.5rem 1.2rem; border-radius: 2px;
+      text-decoration: none; transition: opacity 0.2s;
+    }
+    .nav-cta:hover { opacity: 0.75; }
+
+    /* ─── HERO ─── */
+    #hero {
+      min-height: 100vh;
+      display: flex; flex-direction: column; justify-content: center;
+      padding: 110px 6vw 70px;
+      position: relative; overflow: hidden;
+      border-bottom: 1px solid var(--border);
+    }
+    .hero-inner {
+      max-width: 1160px; margin: 0 auto; width: 100%;
+      display: grid; grid-template-columns: 1.15fr 0.85fr;
+      align-items: center; gap: 4rem;
+    }
+    .hero-eyebrow {
+      display: inline-flex; align-items: center; gap: 0.6rem;
+      font-size: 0.75rem; font-weight: 600;
+      letter-spacing: 0.14em; text-transform: uppercase;
+      color: var(--mid); margin-bottom: 1.5rem;
+      opacity: 0; animation: fadeUp 0.6s 0.1s ease forwards;
+    }
+    .hero-eyebrow span { display: inline-block; width: 28px; height: 1px; background: var(--mid); }
+    h1.hero-name {
+      font-family: var(--serif);
+      font-size: clamp(46px, 6vw, 84px);
+      font-weight: 900; line-height: 1.02;
+      letter-spacing: -0.03em; color: var(--black);
+      margin-bottom: 1.5rem;
+      opacity: 0; animation: fadeUp 0.6s 0.2s ease forwards;
+    }
+    h1.hero-name .italic { font-style: italic; font-weight: 700; }
+    .hero-sub {
+      font-size: 1.08rem; font-weight: 300;
+      color: var(--mid); line-height: 1.75;
+      max-width: 520px; margin-bottom: 2.25rem;
+      opacity: 0; animation: fadeUp 0.6s 0.35s ease forwards;
+    }
+    .hero-sub strong { color: var(--black); font-weight: 500; }
+    .hero-actions { display: flex; gap: 1rem; flex-wrap: wrap; opacity: 0; animation: fadeUp 0.6s 0.5s ease forwards; }
+    .btn {
+      display: inline-flex; align-items: center; gap: 0.45rem;
+      padding: 0.7rem 1.6rem;
+      font-family: var(--sans); font-size: 0.82rem; font-weight: 600;
+      letter-spacing: 0.05em; text-transform: uppercase;
+      text-decoration: none; border-radius: 2px;
+      transition: all 0.2s;
+    }
+    .btn-dark { background: var(--black); color: var(--white); border: 1.5px solid var(--black); }
+    .btn-dark:hover { opacity: .75; }
+    .btn-ghost { background: transparent; color: var(--black); border: 1.5px solid var(--black); }
+    .btn-ghost:hover { background: var(--black); color: var(--white); }
+    .hero-right { display: flex; flex-direction: column; align-items: flex-end; opacity: 0; animation: fadeIn 0.8s 0.4s ease forwards; }
+    .hero-big-text {
+      font-family: var(--serif);
+      font-size: clamp(76px, 9.5vw, 140px);
+      font-weight: 900; font-style: italic;
+      line-height: 0.92; letter-spacing: -0.04em;
+      color: transparent;
+      -webkit-text-stroke: 1.5px var(--outline);
+      text-align: right; user-select: none;
+      font-variant-numeric: lining-nums;
+    }
+    .hero-big-cap { margin-top: 1.25rem; font-size: .72rem; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--mid); text-align: right; max-width: 300px; line-height: 1.6; }
+    .kpi-strip {
+      max-width: 1160px; margin: 4rem auto 0; width: 100%;
+      display: grid; grid-template-columns: repeat(4, 1fr);
+      gap: 1px; background: var(--border); border: 1px solid var(--border);
+      opacity: 0; animation: fadeUp 0.6s 0.65s ease forwards;
+    }
+    .kpi { background: var(--white); padding: 1.35rem 1.5rem 1.4rem; }
+    .kpi-val { font-family: var(--serif); font-weight: 900; font-size: clamp(1.7rem, 2.5vw, 2.35rem); line-height: 1; letter-spacing: -0.02em; font-variant-numeric: lining-nums; color: var(--black); }
+    .kpi-val small { font-size: .5em; font-weight: 700; letter-spacing: 0; margin-left: .15em; }
+    .kpi-label { font-size: .8rem; color: var(--mid); margin-top: .6rem; line-height: 1.45; }
+
+    /* ─── SECTIONS ─── */
+    section { padding: 110px 6vw; }
+    .sec-off { background: var(--off); }
+    .container { max-width: 1160px; margin: 0 auto; }
+    .section-header { margin-bottom: 3rem; }
+    .eyebrow { font-size: 0.72rem; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase; color: var(--viz-muted); margin-bottom: 0.75rem; }
+    h2.heading { font-family: var(--serif); font-size: clamp(32px, 3.5vw, 50px); font-weight: 900; line-height: 1.1; letter-spacing: -0.025em; color: var(--black); }
+    h2.heading em { font-style: italic; font-weight: 700; }
+    .lede { font-size: 1.1rem; font-weight: 300; color: var(--mid); line-height: 1.8; max-width: 760px; margin-top: 1.25rem; }
+    .lede strong { color: var(--black); font-weight: 500; }
+    .prose p { font-size: 1rem; font-weight: 300; color: var(--mid); line-height: 1.85; margin-bottom: 1.1rem; }
+    .prose p strong { color: var(--black); font-weight: 500; }
+    .subhead { font-family: var(--serif); font-size: 1.15rem; font-weight: 700; color: var(--black); margin: 2.4rem 0 1rem; display: flex; align-items: center; gap: .75rem; }
+    .subhead::before { content: ''; display: block; width: 18px; height: 2px; background: var(--black); }
+
+    /* ─── BRIEF ─── */
+    .brief-grid { display: grid; grid-template-columns: 0.95fr 1.5fr; gap: 5rem; align-items: start; }
+    .brief-sticky { position: sticky; top: 90px; }
+    .spec { border: 1px solid var(--border); background: var(--white); }
+    .spec-title { padding: 1rem 1.2rem; border-bottom: 1px solid var(--border); font-family: var(--serif); font-weight: 700; font-size: 1rem; display: flex; align-items: center; gap: .7rem; }
+    .spec-title::before { content: ''; width: 3px; height: 20px; background: var(--black); border-radius: 2px; }
+    .spec-row { display: grid; grid-template-columns: 92px 1fr; gap: 1rem; padding: .8rem 1.2rem; border-bottom: 1px solid var(--border); font-size: .86rem; line-height: 1.55; }
+    .spec-row:last-child { border-bottom: none; }
+    .spec-k { font-size: .66rem; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--viz-muted); padding-top: .2rem; }
+    .spec-v { color: var(--mid); }
+    .spec-v strong { color: var(--black); font-weight: 500; }
+    .spec-v a { color: var(--black); text-decoration: none; border-bottom: 1.5px solid var(--black); font-weight: 500; }
+    .spec-v a:hover { opacity: .55; }
+    .who { width: 100%; border-collapse: collapse; margin-top: .5rem; }
+    .who th, .who td { text-align: left; vertical-align: top; padding: .85rem .9rem .85rem 0; border-bottom: 1px solid var(--border); font-size: .9rem; line-height: 1.6; }
+    .who th { font-family: var(--serif); font-weight: 700; color: var(--black); width: 150px; font-size: .95rem; }
+    .who td { color: var(--mid); font-weight: 300; }
+    .hard-list { list-style: none; display: grid; gap: .9rem; }
+    .hard-list li { display: grid; grid-template-columns: 110px 1fr; gap: 1rem; padding: 1rem 1.1rem; border: 1px solid var(--border); background: var(--white); font-size: .9rem; color: var(--mid); line-height: 1.6; }
+    .hard-list .hl-k { font-family: var(--serif); font-weight: 700; color: var(--black); }
+    .hard-list strong { color: var(--black); font-weight: 500; }
+
+    /* ─── PIPELINE ─── */
+    .stage-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 1px; background: var(--border); border: 1px solid var(--border); }
+    .stage { background: var(--white); padding: 1.5rem 1.3rem 1.6rem; transition: background .2s; }
+    .stage:hover { background: var(--off); }
+    .stage-num { font-family: var(--serif); font-style: italic; font-weight: 900; font-size: 2rem; color: var(--black); opacity: .15; line-height: 1; font-variant-numeric: lining-nums; }
+    .stage h3 { font-family: var(--serif); font-size: 1.08rem; font-weight: 700; color: var(--black); margin: .8rem 0 .3rem; }
+    .stage-sub { font-size: .8rem; color: var(--mid); margin-bottom: 1rem; line-height: 1.5; min-height: 2.4em; }
+    .tick-list { list-style: none; display: flex; flex-direction: column; gap: .5rem; }
+    .tick-list li { font-size: .82rem; color: var(--mid); line-height: 1.55; padding-left: .95rem; position: relative; }
+    .tick-list li::before { content: '–'; position: absolute; left: 0; color: var(--viz-ctx); }
+    .tick-list li strong { color: var(--black); font-weight: 500; }
+    .build-split { display: grid; grid-template-columns: 1.35fr 1fr; gap: 1.75rem; margin-top: 1.75rem; align-items: stretch; }
+    /* grid children may shrink below their content (wide code, charts) */
+    .brief-grid > *, .build-split > *, .model-grid > *, .score-grid > *, .finding > *, .contact-grid > *, .hero-inner > * { min-width: 0; }
+    .code-card { background: var(--surface); border: 1px solid var(--border); padding: 1.3rem 1.4rem; overflow-x: auto; }
+    .code-card pre { font: 0.78rem/1.75 var(--mono); color: var(--black); white-space: pre; }
+    .code-card .c { color: var(--viz-muted); }
+    .code-card .k { font-weight: 700; }
+    .card-label { font-size: .65rem; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--viz-muted); margin-bottom: .8rem; display: block; }
+    .rules { border: 1px solid var(--border); background: var(--white); padding: 1.3rem 1.4rem; }
+    .rules ul { list-style: none; display: grid; gap: .65rem; }
+    .rules li { font-size: .86rem; color: var(--mid); line-height: 1.55; padding-left: 1.6rem; position: relative; }
+    .rules li::before { content: '✓'; position: absolute; left: 0; top: 0; font-weight: 700; color: var(--black); }
+    .rules li strong { color: var(--black); font-weight: 500; }
+
+    /* ─── MODEL ─── */
+    .model-grid { display: grid; grid-template-columns: 0.9fr 1.1fr; gap: 3.5rem; align-items: start; }
+    .steps { list-style: none; counter-reset: step; display: grid; gap: 1.4rem; }
+    .steps li { counter-increment: step; display: grid; grid-template-columns: 44px 1fr; gap: .9rem; }
+    .steps li::before { content: '0' counter(step); font-family: var(--serif); font-style: italic; font-weight: 900; font-size: 1.5rem; line-height: 1.1; color: var(--black); opacity: .2; font-variant-numeric: lining-nums; }
+    .steps h3 { font-family: var(--serif); font-size: 1.02rem; font-weight: 700; margin-bottom: .25rem; }
+    .steps p { font-size: .88rem; color: var(--mid); line-height: 1.7; font-weight: 300; }
+    .steps p strong { color: var(--black); font-weight: 500; }
+    .steps code, .prose code, .viz-note code { font-family: var(--mono); font-size: .84em; background: var(--tag-bg); padding: .05em .35em; border-radius: 3px; color: var(--black); }
+    .table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    .data-table { width: 100%; border-collapse: collapse; font-size: .86rem; background: var(--white); border: 1px solid var(--border); }
+    .data-table caption { caption-side: bottom; text-align: left; font-size: .76rem; color: var(--viz-muted); padding-top: .7rem; line-height: 1.55; }
+    .data-table th { font-size: .66rem; letter-spacing: .1em; text-transform: uppercase; color: var(--viz-muted); font-weight: 600; text-align: left; padding: .75rem .9rem; border-bottom: 1px solid var(--border); background: var(--off); }
+    .data-table td { padding: .8rem .9rem; border-bottom: 1px solid var(--border); color: var(--mid); font-variant-numeric: tabular-nums; }
+    .data-table tr:last-child td { border-bottom: none; }
+    .data-table .num { text-align: right; }
+    .data-table tr.win td { color: var(--black); font-weight: 500; }
+    .data-table .medal { font-size: .64rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; background: var(--black); color: var(--white); padding: .15rem .45rem; border-radius: 2px; margin-left: .45rem; vertical-align: 1px; }
+    .persona-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; background: var(--border); border: 1px solid var(--border); margin-top: 1.75rem; }
+    .persona { background: var(--white); padding: 1.3rem 1.4rem; }
+    .persona-k { font-size: .65rem; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--viz-muted); }
+    .persona h3 { font-family: var(--serif); font-size: 1.05rem; font-weight: 700; margin: .35rem 0 .45rem; }
+    .persona p { font-size: .84rem; color: var(--mid); line-height: 1.65; }
+    .persona p strong { color: var(--black); font-weight: 500; }
+
+    /* ─── CHART FIGURES ─── */
+    .viz { margin: 0; border: 1px solid var(--border); background: var(--white); padding: 1.35rem 1.5rem 1.15rem; min-width: 0; }
+    .viz + .viz { margin-top: 1.5rem; }
+    .viz-head { display: flex; justify-content: space-between; gap: 1rem; align-items: flex-start; margin-bottom: .85rem; }
+    .viz-title { font-family: var(--sans); font-weight: 600; font-size: .95rem; color: var(--black); line-height: 1.4; }
+    .viz-sub { font-size: .8rem; color: var(--viz-muted); margin-top: .2rem; line-height: 1.5; }
+    .viz-btn { font: 600 .66rem var(--sans); letter-spacing: .08em; text-transform: uppercase; border: 1.5px solid var(--border); background: transparent; color: var(--mid); padding: .38rem .75rem; border-radius: 999px; cursor: pointer; white-space: nowrap; transition: all .2s; flex-shrink: 0; }
+    .viz-btn:hover { border-color: var(--black); color: var(--black); }
+    .viz-btn[aria-pressed="true"] { background: var(--black); color: var(--white); border-color: var(--black); }
+    .viz-legend { display: flex; flex-wrap: wrap; gap: .35rem 1.25rem; font-size: .78rem; color: var(--mid); margin-bottom: .75rem; }
+    .viz-legend span { display: inline-flex; align-items: center; gap: .45rem; }
+    .sw { width: 12px; height: 12px; border-radius: 3px; display: inline-block; flex-shrink: 0; }
+    .sw-dot { border-radius: 50%; }
+    .sw-ink { background: var(--viz-ink); }
+    .sw-ctx { background: var(--viz-ctx); }
+    .viz-plot { position: relative; }
+    .viz-plot svg { display: block; width: 100%; height: auto; overflow: visible; }
+    .viz-note { font-size: .76rem; color: var(--viz-muted); margin-top: .85rem; line-height: 1.6; }
+    .viz-note strong { color: var(--mid); font-weight: 600; }
+    .viz-table-wrap { display: none; margin-top: .9rem; max-height: 380px; overflow: auto; border: 1px solid var(--border); }
+    .viz.show-table .viz-table-wrap { display: block; }
+    .viz-table { width: 100%; border-collapse: collapse; font-size: .8rem; }
+    .viz-table th { position: sticky; top: 0; background: var(--off); text-align: left; font-weight: 600; color: var(--black); padding: .5rem .7rem; border-bottom: 1px solid var(--border); font-size: .72rem; }
+    .viz-table td { padding: .45rem .7rem; border-bottom: 1px solid var(--border); color: var(--mid); font-variant-numeric: tabular-nums; }
+    .viz-table .num { text-align: right; }
+    /* svg roles */
+    .vz-ink { fill: var(--viz-ink); }
+    .vz-ctx { fill: var(--viz-ctx); }
+    .vz-grid { stroke: var(--viz-grid); stroke-width: 1; shape-rendering: crispEdges; }
+    .vz-axis { stroke: var(--viz-axis); stroke-width: 1; shape-rendering: crispEdges; }
+    .vz-zero { stroke: var(--viz-axis); stroke-width: 1.5; }
+    .vz-ci-ink { stroke: var(--viz-ink); stroke-width: 2; stroke-linecap: round; }
+    .vz-ci-ctx { stroke: var(--viz-ctx); stroke-width: 2; stroke-linecap: round; }
+    .vz-ring { stroke: var(--white); stroke-width: 2; }
+    .vz-range { stroke: var(--viz-ctx); stroke-width: 2; stroke-linecap: round; }
+    .vz-mean { stroke: var(--viz-ink); stroke-width: 2; stroke-linecap: round; }
+    .vz-t { font-family: var(--sans); font-size: 12px; fill: var(--mid); }
+    .vz-t-strong { fill: var(--black); font-weight: 600; }
+    .vz-t-val { fill: var(--black); font-weight: 600; font-variant-numeric: tabular-nums; }
+    .vz-t-muted { fill: var(--viz-muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+    .vz-t-head { fill: var(--viz-muted); font-size: 10px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; }
+    .vz-in-ink { fill: var(--white); font-weight: 600; font-size: 12px; font-family: var(--sans); }
+    .vz-in-ctx { fill: var(--black); font-weight: 600; font-size: 12px; font-family: var(--sans); }
+    .vz-mark { cursor: default; transition: opacity .15s; outline: none; }
+    .vz-mark:hover { opacity: .72; }
+    .vz-mark:focus-visible { opacity: .72; stroke: var(--black); stroke-width: 2; }
+    .vz-hit { fill: transparent; cursor: default; outline: none; }
+    .vz-hit:focus-visible { stroke: var(--black); stroke-width: 1.5; fill: transparent; }
+    .vz-tip { position: fixed; z-index: 300; pointer-events: none; background: var(--black); color: var(--white); padding: .55rem .75rem; border-radius: 4px; font-size: .76rem; line-height: 1.45; max-width: 260px; opacity: 0; transition: opacity .12s; box-shadow: 0 10px 28px rgba(0,0,0,.18); left: 0; top: 0; }
+    .vz-tip-v { font-weight: 600; font-size: .9rem; }
+    .vz-tip-l { opacity: .78; }
+
+    /* ─── SCOREBOARD ─── */
+    .score-grid { display: grid; grid-template-columns: 0.95fr 1.15fr; gap: 3.5rem; align-items: start; }
+    .points { list-style: none; display: grid; gap: 1.5rem; }
+    .points li { display: grid; grid-template-columns: 44px 1fr; gap: .9rem; }
+    .points .pn { font-family: var(--serif); font-style: italic; font-weight: 900; font-size: 1.5rem; opacity: .2; line-height: 1.1; font-variant-numeric: lining-nums; }
+    .points h3 { font-family: var(--serif); font-size: 1.05rem; font-weight: 700; margin-bottom: .3rem; }
+    .points p { font-size: .9rem; color: var(--mid); line-height: 1.7; font-weight: 300; }
+    .points p strong { color: var(--black); font-weight: 500; }
+    .tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; background: var(--border); border: 1px solid var(--border); }
+    .tiles.two { grid-template-columns: repeat(2, 1fr); }
+    .tiles.four { grid-template-columns: repeat(4, 1fr); }
+    .tile { background: var(--white); padding: 1.2rem 1.3rem 1.25rem; }
+    .tile-val { font-family: var(--serif); font-weight: 900; font-size: clamp(1.55rem, 2.2vw, 2rem); line-height: 1.05; color: var(--black); font-variant-numeric: lining-nums; letter-spacing: -0.01em; }
+    .tile-label { font-size: .8rem; color: var(--mid); margin-top: .5rem; line-height: 1.5; }
+    .callout { border-left: 3px solid var(--black); padding: 1.1rem 1.35rem; background: var(--surface); font-size: .95rem; color: var(--mid); line-height: 1.75; }
+    .callout strong { color: var(--black); font-weight: 600; }
+    .fine { font-size: .76rem; color: var(--viz-muted); line-height: 1.6; margin-top: 1rem; }
+    .fine code { font-family: var(--mono); font-size: .9em; }
+
+    /* ─── FINDINGS ─── */
+    .method-note { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; background: var(--border); border: 1px solid var(--border); margin-bottom: 4rem; }
+    .method-note div { background: var(--white); padding: 1.15rem 1.3rem; font-size: .84rem; color: var(--mid); line-height: 1.65; }
+    .method-note h3 { font-family: var(--serif); font-size: .98rem; font-weight: 700; color: var(--black); margin-bottom: .35rem; }
+    .finding { display: grid; grid-template-columns: 0.82fr 1.18fr; gap: 3.5rem; align-items: start; padding: 3.75rem 0; border-top: 1px solid var(--border); }
+    .finding.first { border-top: none; padding-top: 0; }
+    .finding-num { font-family: var(--serif); font-style: italic; font-weight: 900; font-size: 2.6rem; color: var(--black); opacity: .15; line-height: 1; margin-bottom: .7rem; font-variant-numeric: lining-nums; }
+    .finding h3 { font-family: var(--serif); font-size: clamp(1.45rem, 2.1vw, 1.9rem); font-weight: 900; line-height: 1.15; letter-spacing: -0.015em; margin-bottom: 1.1rem; }
+    .finding h3 em { font-style: italic; font-weight: 700; }
+    .finding-text p { font-size: .95rem; font-weight: 300; color: var(--mid); line-height: 1.8; margin-bottom: .9rem; }
+    .finding-text p strong { color: var(--black); font-weight: 500; }
+    .so-what { margin-top: 1.25rem; padding-top: 1rem; border-top: 1px solid var(--border); font-size: .86rem; color: var(--mid); line-height: 1.7; }
+    .so-what b { display: block; font-size: .65rem; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--viz-muted); margin-bottom: .3rem; }
+    .map-fig { margin: 1.5rem 0 0; border: 1px solid var(--border); background: var(--white); padding: 1rem; }
+    .map-fig img { display: block; width: 100%; height: auto; }
+    [data-theme="dark"] .map-fig img { filter: brightness(.92); }
+    .map-fig figcaption { font-size: .76rem; color: var(--viz-muted); margin-top: .75rem; line-height: 1.6; }
+
+    /* ─── ACTIONS (tabs reuse the portfolio's pill style) ─── */
+    .tab-bar { display: flex; gap: 0.75rem; margin-bottom: 2.5rem; flex-wrap: wrap; }
+    .tab-btn {
+      font-family: var(--sans); font-size: 0.8rem; font-weight: 600;
+      letter-spacing: 0.06em; text-transform: uppercase;
+      padding: 0.6rem 1.5rem; border-radius: 999px;
+      border: 1.5px solid var(--border);
+      background: transparent; color: var(--mid);
+      cursor: pointer; transition: all 0.2s;
+    }
+    .tab-btn[aria-selected="true"] { background: var(--black); color: var(--white); border-color: var(--black); }
+    .tab-btn:hover:not([aria-selected="true"]) { border-color: var(--black); color: var(--black); }
+    .tab-panel[hidden] { display: none; }
+    .panel-intro { font-size: .95rem; color: var(--mid); font-weight: 300; line-height: 1.75; max-width: 820px; margin-bottom: 1.75rem; }
+    .panel-intro strong { color: var(--black); font-weight: 500; }
+    .action-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1.5rem; }
+    .action { background: var(--white); border: 1px solid var(--border); display: flex; flex-direction: column; transition: transform .22s ease, box-shadow .22s ease; }
+    .action:hover { transform: translateY(-3px); box-shadow: 0 16px 44px rgba(0,0,0,0.07); }
+    .action-top { background: var(--off); padding: 1rem 1.4rem; display: flex; align-items: center; gap: 1rem; border-bottom: 1px solid var(--border); }
+    .action-num { font-family: var(--serif); font-style: italic; font-weight: 900; font-size: 1.6rem; color: var(--black); opacity: .18; line-height: 1; font-variant-numeric: lining-nums; }
+    .action-top h3 { font-family: var(--serif); font-size: 1.08rem; font-weight: 700; line-height: 1.3; }
+    .action-body { padding: 1.2rem 1.4rem 1.35rem; display: flex; flex-direction: column; gap: .85rem; flex: 1; }
+    .ar-k { display: block; font-size: .63rem; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--viz-muted); margin-bottom: .2rem; }
+    .ar p { font-size: .88rem; color: var(--mid); line-height: 1.65; }
+    .ar p strong { color: var(--black); font-weight: 500; }
+    .kpi-chip { display: inline-block; font-size: .72rem; font-weight: 500; padding: .25rem .65rem; border-radius: 3px; border: 1px solid var(--border); background: var(--off); color: var(--mid); }
+    .ar-track { margin-top: auto; }
+    .panel-note { margin-top: 1.5rem; font-size: .8rem; color: var(--viz-muted); line-height: 1.6; max-width: 900px; }
+
+    /* ─── STRATEGY ─── */
+    .roadmap { display: grid; grid-template-columns: 170px repeat(3, 1fr); gap: 1px; background: var(--border); border: 1px solid var(--border); }
+    .rm-corner, .rm-head { background: var(--black); color: var(--white); padding: .95rem 1.2rem; }
+    .rm-head b { display: block; font-size: .74rem; letter-spacing: .12em; text-transform: uppercase; font-weight: 600; }
+    .rm-head span { font-size: .74rem; opacity: .6; }
+    .rm-corner { font-size: .74rem; letter-spacing: .12em; text-transform: uppercase; font-weight: 600; }
+    .rm-track { background: var(--off); padding: 1.3rem 1.2rem; }
+    .rm-track h3 { font-family: var(--serif); font-size: 1.05rem; font-weight: 700; line-height: 1.3; }
+    .rm-track p { font-size: .76rem; color: var(--mid); margin-top: .35rem; line-height: 1.5; }
+    .rm-cell { background: var(--white); padding: 1.3rem 1.3rem 1.4rem; }
+    .rm-when { display: none; font-size: .63rem; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--viz-muted); margin-bottom: .3rem; }
+    .rm-cell h4 { font-family: var(--serif); font-size: 1rem; font-weight: 700; margin-bottom: .45rem; line-height: 1.3; }
+    .rm-cell p { font-size: .84rem; color: var(--mid); line-height: 1.65; }
+    .rm-cell p strong { color: var(--black); font-weight: 500; }
+    .measure-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-top: 1.75rem; }
+    .measure { border: 1px solid var(--border); background: var(--white); padding: 1.2rem 1.4rem; }
+    .measure ul { list-style: none; display: grid; gap: .55rem; margin-top: .2rem; }
+    .measure li { font-size: .86rem; color: var(--mid); line-height: 1.55; display: flex; gap: .7rem; }
+    .measure li::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--black); margin-top: .5em; flex-shrink: 0; }
+    .lessons { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1px; background: var(--border); border: 1px solid var(--border); }
+    .lesson { background: var(--white); padding: 1.4rem 1.5rem; }
+    .lesson h3 { font-family: var(--serif); font-size: 1.05rem; font-weight: 700; margin-bottom: .4rem; }
+    .lesson p { font-size: .88rem; color: var(--mid); line-height: 1.7; font-weight: 300; }
+    .lesson p strong { color: var(--black); font-weight: 500; }
+    .next-list { list-style: none; display: grid; grid-template-columns: repeat(2, 1fr); gap: .7rem 2.5rem; }
+    .next-list li { font-size: .88rem; color: var(--mid); line-height: 1.6; padding-left: 1rem; position: relative; }
+    .next-list li::before { content: '–'; position: absolute; left: 0; color: var(--viz-ctx); }
+    .next-list li strong { color: var(--black); font-weight: 500; }
+
+    /* ─── CONTACT (same as the portfolio) ─── */
+    #contact { background: var(--black); color: var(--white); }
+    [data-theme="dark"] #contact { background: #080808; }
+    .contact-grid { display: grid; grid-template-columns: 1.1fr 1fr; gap: 6rem; align-items: start; }
+    #contact .eyebrow { color: rgba(255,255,255,0.45); }
+    #contact h2.heading { color: #fff; }
+    #contact h2.heading em { color: rgba(255,255,255,0.45); }
+    [data-theme="light"] #contact .eyebrow { color: rgba(255,255,255,0.45); }
+    .contact-intro { font-size: 1rem; font-weight: 300; color: rgba(255,255,255,0.6); line-height: 1.8; margin-bottom: 2.5rem; }
+    .contact-details { display: flex; flex-direction: column; gap: 1.2rem; }
+    .contact-row { display: flex; gap: 1.2rem; align-items: baseline; }
+    .contact-label { font-size: 0.7rem; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: rgba(255,255,255,0.4); flex-shrink: 0; width: 80px; }
+    .contact-val { font-size: 0.92rem; color: rgba(255,255,255,0.75); }
+    .contact-val a { color: rgba(255,255,255,0.8); text-decoration: none; border-bottom: 1px solid rgba(255,255,255,0.2); transition: color 0.2s, border-color 0.2s; }
+    .contact-val a:hover { color: #fff; border-color: rgba(255,255,255,0.6); }
+    .contact-right-big { font-family: var(--serif); font-size: clamp(36px, 4.5vw, 58px); font-weight: 900; line-height: 1.1; letter-spacing: -0.02em; color: #fff; margin-bottom: 1.5rem; }
+    .contact-right-big em { font-style: italic; color: rgba(255,255,255,0.4); }
+    .contact-btns { display: flex; gap: 1rem; flex-wrap: wrap; }
+    .btn-white { background: #fff; color: #0d0d0d; border: 1.5px solid #fff; }
+    .btn-white:hover { opacity: .85; }
+    .btn-white-ghost { background: transparent; color: #fff; border: 1.5px solid rgba(255,255,255,0.3); }
+    .btn-white-ghost:hover { border-color: #fff; }
+    #contact :focus-visible { outline-color: #fff; }
+
+    /* ─── FOOTER ─── */
+    footer { background: #080808; padding: 1.4rem 6vw; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: .6rem 1.5rem; }
+    footer span, footer a { font-size: 0.75rem; color: rgba(255,255,255,0.45); letter-spacing: 0.04em; text-decoration: none; }
+    footer a:hover { color: #fff; }
+    .disclaimer { background: #080808; padding: 0 6vw 1.6rem; font-size: .72rem; color: rgba(255,255,255,0.4); line-height: 1.6; }
+
+    /* ─── ANIMATIONS ─── */
+    @keyframes fadeUp { from { opacity: 0; transform: translateY(22px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+    .reveal { opacity: 0; transform: translateY(24px); transition: opacity 0.6s ease, transform 0.6s ease; }
+    .reveal.visible { opacity: 1; transform: none; }
+    .no-io .reveal { opacity: 1; transform: none; }
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+      .reveal, .hero-eyebrow, h1.hero-name, .hero-sub, .hero-actions, .hero-right, .kpi-strip { opacity: 1 !important; transform: none !important; animation: none !important; transition: none !important; }
+    }
+    @media print {
+      nav, .theme-toggle, .viz-btn { display: none !important; }
+      .reveal, .hero-eyebrow, h1.hero-name, .hero-sub, .hero-actions, .hero-right, .kpi-strip { opacity: 1 !important; transform: none !important; animation: none !important; }
+      section { padding: 40px 0; }
+    }
+
+    /* ─── RESPONSIVE ─── */
+    @media (max-width: 1180px) {
+      .nav-links { gap: 1.3rem; }
+      .nav-logo span { display: none; }
+      .build-split { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 1040px) {
+      .nav-links { display: none; }
+      .stage-grid { grid-template-columns: repeat(2, 1fr); }
+      .stage:last-child { grid-column: span 2; }
+      .stage-sub { min-height: 0; }
+    }
+    @media (max-width: 900px) {
+      section { padding: 84px 6vw; }
+      .hero-inner { grid-template-columns: 1fr; gap: 2rem; }
+      .hero-right { align-items: flex-start; }
+      .hero-big-text, .hero-big-cap { text-align: left; }
+      .hero-big-text { font-size: clamp(64px, 16vw, 110px); }
+      .kpi-strip { grid-template-columns: repeat(2, 1fr); margin-top: 2.5rem; }
+      .brief-grid, .model-grid, .score-grid, .finding, .contact-grid, .build-split { grid-template-columns: 1fr; gap: 2.5rem; }
+      .brief-sticky { position: static; }
+      .method-note, .persona-grid { grid-template-columns: 1fr; }
+      .roadmap { grid-template-columns: 1fr; }
+      .rm-corner, .rm-head { display: none; }
+      .rm-when { display: block; }
+      .rm-track { padding-top: 1.6rem; }
+      .tiles.four { grid-template-columns: repeat(2, 1fr); }
+      .finding { padding: 3rem 0; }
+    }
+    @media (max-width: 640px) {
+      .action-grid, .lessons, .measure-grid, .next-list { grid-template-columns: 1fr; }
+      .tiles, .tiles.two { grid-template-columns: 1fr 1fr; }
+      .stage-grid { grid-template-columns: 1fr; }
+      .stage:last-child { grid-column: auto; }
+      .hard-list li { grid-template-columns: 1fr; gap: .3rem; }
+      .who th { width: 110px; }
+      .tab-bar { gap: .5rem; }
+      .tab-btn { padding: .55rem 1rem; font-size: .72rem; }
+      .viz { padding: 1.1rem 1rem 1rem; }
+      .viz-head { flex-direction: column; gap: .6rem; }
+      .nav-cta { padding: .45rem .8rem; font-size: .72rem; }
+      .spec-row { grid-template-columns: 78px 1fr; }
+      .data-table th, .data-table td { padding: .7rem .55rem; }
+      .data-table th { font-size: .6rem; letter-spacing: .06em; }
+      .data-table .medal { display: none; }
+    }
+
+    /* ─── GYM SEGMENTATION PAGE: three actions per team and chart roles on the same tokens ─── */
+    .action-grid.three { grid-template-columns: repeat(3, 1fr); }
+    .ar-track .kpi-chip { line-height: 1.5; }
+    @media (max-width: 1040px) {
+      .action-grid.three { grid-template-columns: repeat(2, 1fr); }
+    }
+    /* the odd third card spans the row when the grid has two columns */
+    @media (max-width: 1040px) and (min-width: 641px) {
+      .action-grid.three .action:last-child:nth-child(odd) { grid-column: 1 / -1; }
+    }
+    @media (max-width: 640px) {
+      .action-grid.three { grid-template-columns: 1fr; }
+    }
+
+    .vz-dot { pointer-events: none; }
+    .vz-fit { stroke: var(--viz-muted); stroke-width: 1.25; stroke-dasharray: 5 4; pointer-events: none; }
+    .vz-ref { stroke: var(--viz-muted); stroke-width: 1.25; stroke-dasharray: 4 3; pointer-events: none; }
+    .vz-row { stroke: var(--viz-grid); stroke-width: 1; }
+    .vz-sm { font-size: 10.5px; }
+    .vz-line-ctx { fill: none; stroke: var(--viz-ctx); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; pointer-events: none; }
+    /* scatter: five-year bands behind the dots carry the hover and keyboard focus */
+    .vz-band .vz-hit { transition: fill-opacity .15s; }
+    .vz-band:hover, .vz-band:focus-visible { opacity: 1; }
+    .vz-band:hover .vz-hit, .vz-band:focus-visible .vz-hit { fill: var(--viz-grid); fill-opacity: .7; }
+    /* labels never block the hover target underneath */
+    .vz-t, .vz-in-ink, .vz-in-ctx { pointer-events: none; }
+  </style>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<!-- ═══ NAV ═══ -->
+<nav aria-label="Primary">
+  <a href="https://racheltran.vercel.app/" class="nav-logo">Rachel Tran<span>← Portfolio</span></a>
+  <ul class="nav-links">
+    <li><a href="#brief">Brief</a></li>
+    <li><a href="#data">Data</a></li>
+    <li><a href="#method">Method</a></li>
+    <li><a href="#findings">Findings</a></li>
+    <li><a href="#actions">Actions</a></li>
+    <li><a href="#strategy">Strategy</a></li>
+  </ul>
+  <div class="nav-right">
+    <button class="theme-toggle" type="button" aria-label="Switch to dark mode" id="themeToggle">
+      <svg id="icon-moon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+      <svg id="icon-sun" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:none" aria-hidden="true"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+    </button>
+    <a href="https://github.com/racheltran184/Python-Project-3" class="nav-cta" target="_blank" rel="noopener">Code ↗</a>
+  </div>
+</nav>
+
+<main id="main">
+<!-- ═══ HERO ═══ -->
+<section id="hero">
+  <div class="hero-inner">
+    <div class="hero-left">
+      <p class="hero-eyebrow"><span></span>Case study · Customer segmentation</p>
+      <h1 class="hero-name">Two kinds of member,<br/><span class="italic">one life stage apart.</span></h1>
+      <p class="hero-sub">K-means++ and agglomerative clustering on <strong>2,000 gym members</strong>, then stress-tested six ways. Every method finds the same two segments, but they sit on <strong>one life-stage axis</strong>: where members live already sorts them, and none of it needs a member's gender or marital status.</p>
+      <div class="hero-actions">
+        <a href="#findings" class="btn btn-dark">See the findings →</a>
+        <a href="#method" class="btn btn-ghost">How I built it</a>
+      </div>
+    </div>
+    <div class="hero-right" aria-hidden="true">
+      <div class="hero-big-text">One<br/>axis.</div>
+      <p class="hero-big-cap">Seven membership fields describe one life stage, so every method finds the same two segments</p>
+    </div>
+  </div>
+  <div class="kpi-strip" role="list">
+    <div class="kpi" role="listitem"><div class="kpi-val">2,000</div><div class="kpi-label">Gym members, seven membership fields, no missing values</div></div>
+    <div class="kpi" role="listitem"><div class="kpi-val">0.545</div><div class="kpi-label">Silhouette at two segments, against 0.433 at three and 0.452 at four</div></div>
+    <div class="kpi" role="listitem"><div class="kpi-val">99.4%</div><div class="kpi-label">Of members keep their segment without gender or marital status</div></div>
+    <div class="kpi" role="listitem"><div class="kpi-val">r = 0.9995</div><div class="kpi-label">Income against age: one field repeats the other</div></div>
+  </div>
+</section>
+
+<!-- ═══ 01 BRIEF ═══ -->
+<section id="brief" class="sec-off">
+  <div class="container">
+    <div class="brief-grid">
+      <aside class="brief-sticky reveal" aria-label="Project facts">
+        <div class="spec">
+          <div class="spec-title">Project facts</div>
+          <div class="spec-row"><span class="spec-k">Audience</span><span class="spec-v">Management at a large national gym chain, and its marketing, club and product teams</span></div>
+          <div class="spec-row"><span class="spec-k">Data</span><span class="spec-v"><strong>2,000 members</strong>: gender, marital status, age, education, income, occupation and city size</span></div>
+          <div class="spec-row"><span class="spec-k">Method</span><span class="spec-v">K-means++ and agglomerative clustering (Ward), k chosen by elbow and silhouette, then stress-tested six ways</span></div>
+          <div class="spec-row"><span class="spec-k">Tools</span><span class="spec-v">Python, pandas, scikit-learn, matplotlib, seaborn</span></div>
+          <div class="spec-row"><span class="spec-k">Project</span><span class="spec-v">Individual project for a postgraduate predictive analytics unit, Semester 1 2025; taken deeper for this page</span></div>
+          <div class="spec-row"><span class="spec-k">Links</span><span class="spec-v"><a href="https://github.com/racheltran184/Python-Project-3/blob/main/Task.ipynb" target="_blank" rel="noopener">Notebook ↗</a> &nbsp; <a href="https://github.com/racheltran184/Python-Project-3/blob/main/deep_dive.py" target="_blank" rel="noopener">Analysis script ↗</a> &nbsp; <a href="https://github.com/racheltran184/Python-Project-3/blob/main/Report.pdf" target="_blank" rel="noopener">Report (PDF) ↗</a></span></div>
+        </div>
+      </aside>
+      <div class="reveal">
+        <div class="section-header">
+          <p class="eyebrow">01 · The brief</p>
+          <h2 class="heading">One question:<br/><em>who are the members?</em></h2>
+        </div>
+        <div class="prose">
+          <p>A large national gym chain wants to understand its members. The brief: find distinct segments in the <strong>membership details of 2,000 members</strong>, describe them for management, and recommend marketing for each segment, using k-means++ and agglomerative clustering on all seven fields.</p>
+          <p>I treated two clusters as the start, not the answer. A segment earns its place if it is <strong>stable, explained by fields a club can see, and different enough to change what the club does</strong>.</p>
+        </div>
+        <h3 class="subhead">Who a segmentation serves</h3>
+        <table class="who">
+          <tr><th scope="row">Marketing</th><td>Which offer and plan each member hears about first.</td></tr>
+          <tr><th scope="row">Club managers</th><td>Which class formats and hours each club runs.</td></tr>
+          <tr><th scope="row">Product &amp; pricing</th><td>Which membership tiers to sell, and where.</td></tr>
+          <tr><th scope="row">Data &amp; CRM</th><td>What to ask at sign-up, and what to stop asking.</td></tr>
+        </table>
+        <h3 class="subhead">What made the data tricky</h3>
+        <ul class="hard-list">
+          <li><span class="hl-k">One axis</span><span>Income follows age almost exactly (<strong>r = 0.9995</strong>), and marital status, job, education and city move together. Seven fields carry about one dimension of information.</span></li>
+          <li><span class="hl-k">Mixed types</span><span>Two yes-or-no fields, three coded categories and dollars share one distance scale. The brief standardises only age and income, so <strong>one step in education counts as much as nine and a half years of age</strong>.</span></li>
+          <li><span class="hl-k">Sensitive</span><span>Two of the seven fields are <strong>gender and marital status</strong>, which members may not expect a gym to use for targeting.</span></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ 02 DATA ═══ -->
+<section id="data">
+  <div class="container">
+    <div class="section-header reveal">
+      <p class="eyebrow">02 · The members</p>
+      <h2 class="heading">Before the clusters:<br/><em>2,000 members in proportions.</em></h2>
+      <p class="lede">Every category below is a share of all members, not a mode. <strong>Two checks changed how I read the rest</strong>: income repeats age, and the categories are numbered in a way distance treats as a scale.</p>
+    </div>
+    <div class="score-grid">
+      <div class="reveal">
+        <div class="table-scroll" tabindex="0" role="region" aria-label="Data checks table">
+        <table class="data-table">
+          <thead><tr><th scope="col">Check</th><th scope="col">Found</th><th scope="col">Handling</th></tr></thead>
+          <tbody>
+            <tr><td>Missing values</td><td>None in 2,000 rows</td><td>None needed</td></tr>
+            <tr><td>Duplicates</td><td>3 identical rows</td><td>Kept: two members can share a profile</td></tr>
+            <tr><td>Income and age</td><td>Income ≈ −$61,784 + $4,882 × age; r = 0.9995, typical gap $1,391</td><td>Read income as a restatement of age; re-clustered without it</td></tr>
+            <tr><td>Coding</td><td>Education 0 is "other or unknown", numbered below high school</td><td>Kept for the brief's method; re-checked with Gower distance, which treats it as a category</td></tr>
+            <tr><td>Even splits</td><td>Marital status is 50.05% non-single</td><td>Reported as an even split, not a majority</td></tr>
+          </tbody>
+          <caption>Income is self-reported annual income in US dollars, as the data legend defines it.</caption>
+        </table>
+        </div>
+        <div class="tiles two" style="margin-top:1.5rem">
+          <div class="tile"><div class="tile-val">40.8</div><div class="tile-label">Mean age in years; median 40, range 20–76</div></div>
+          <div class="tile"><div class="tile-val">$133,004</div><div class="tile-label">Median income; range $35,832–$309,364</div></div>
+        </div>
+      </div>
+      <div class="reveal">
+        <figure class="viz" data-chart="mix" aria-labelledby="t-mix">
+          <div class="viz-head"><div><div class="viz-title" id="t-mix">Who the 2,000 members are</div><div class="viz-sub">Share of all members in each category</div></div><button class="viz-btn" type="button" aria-pressed="false">Table</button></div>
+          <div class="viz-plot"></div>
+          <div class="viz-table-wrap"></div>
+        </figure>
+      </div>
+    </div>
+    <figure class="viz reveal" style="margin-top:2.5rem" data-chart="corr" aria-labelledby="t-corr">
+      <div class="viz-head"><div><div class="viz-title" id="t-corr">How the seven fields move together</div><div class="viz-sub">Spearman rank correlation between each pair of fields; darker means stronger</div></div><button class="viz-btn" type="button" aria-pressed="false">Table</button></div>
+      <div class="viz-plot"></div>
+      <div class="viz-table-wrap"></div>
+      <p class="viz-note"><strong>How to read it:</strong> 1 means two fields rise and fall in lockstep. Age and income sit at <strong>0.999</strong>; marital status moves with job type (0.95), education (0.88) and city size (0.79). Only gender stays loosely tied to the rest (0.39–0.52).</p>
+    </figure>
+  </div>
+</section>
+
+<!-- ═══ 03 METHOD ═══ -->
+<section id="method" class="sec-off">
+  <div class="container">
+    <div class="section-header reveal">
+      <p class="eyebrow">03 · Method</p>
+      <h2 class="heading">The brief's method,<br/><em>then six ways to break it.</em></h2>
+      <p class="lede">I ran the clustering exactly as briefed, then <strong>changed one assumption at a time</strong> to see whether the segments survived.</p>
+    </div>
+    <div class="stage-grid reveal">
+      <div class="stage">
+        <div class="stage-num">01</div>
+        <h3>Check</h3>
+        <p class="stage-sub">Read the fields first.</p>
+        <ul class="tick-list">
+          <li>Missing values and duplicates</li>
+          <li><strong>Income against age</strong></li>
+          <li>Rank correlations between all seven fields</li>
+        </ul>
+      </div>
+      <div class="stage">
+        <div class="stage-num">02</div>
+        <h3>Scale</h3>
+        <p class="stage-sub">Standardise age and income.</p>
+        <ul class="tick-list">
+          <li>Z-scores for age and income, as the brief requires</li>
+          <li>Coded fields keep their 0–1 to 0–3 codes</li>
+          <li><strong>No dimensionality reduction</strong></li>
+        </ul>
+      </div>
+      <div class="stage">
+        <div class="stage-num">03</div>
+        <h3>Choose k</h3>
+        <p class="stage-sub">Elbow and silhouette.</p>
+        <ul class="tick-list">
+          <li>Inertia for k = 1 to 10</li>
+          <li>Silhouette for k = 2 to 10</li>
+          <li><strong>k = 2 scores 0.545</strong></li>
+        </ul>
+      </div>
+      <div class="stage">
+        <div class="stage-num">04</div>
+        <h3>Cluster</h3>
+        <p class="stage-sub">Two methods, all seven fields.</p>
+        <ul class="tick-list">
+          <li>K-means++, 10 starts, fixed seed</li>
+          <li>Agglomerative clustering, <strong>Ward linkage</strong></li>
+          <li>Segments described in proportions</li>
+        </ul>
+      </div>
+      <div class="stage">
+        <div class="stage-num">05</div>
+        <h3>Stress-test</h3>
+        <p class="stage-sub">Change one thing at a time.</p>
+        <ul class="tick-list">
+          <li>30 random starts; average and complete linkage</li>
+          <li>All fields standardised; <strong>without income</strong></li>
+          <li><strong>Without gender and marital status</strong>; Gower distance</li>
+        </ul>
+      </div>
+    </div>
+    <div class="build-split reveal">
+      <div class="code-card" aria-label="Clustering code">
+        <span class="card-label">Core clustering · deep_dive.py</span>
+<pre>X = df[FIELDS].astype(float)
+X[[<span class="k">'Age'</span>, <span class="k">'Income'</span>]] = StandardScaler().fit_transform(X[[<span class="k">'Age'</span>, <span class="k">'Income'</span>]])
+<span class="c"># ↑ the brief: standardise the two numeric fields only</span>
+km = KMeans(n_clusters=2, init=<span class="k">'k-means++'</span>, n_init=10,
+            random_state=0).fit_predict(X)
+ward = AgglomerativeClustering(n_clusters=2,
+            linkage=<span class="k">'ward'</span>).fit_predict(X)
+df[<span class="k">'silhouette'</span>] = silhouette_samples(X, km)
+<span class="c"># members below 0.25 sit almost as close to the other segment</span></pre>
+      </div>
+      <div class="rules">
+        <span class="card-label">What counts as the same segment</span>
+        <ul>
+          <li><strong>Agreement</strong>: the share of members another method puts in the same segment, after matching labels</li>
+          <li><strong>Adjusted Rand index</strong> as a second measure, which corrects for chance</li>
+          <li><strong>Silhouette per member</strong>: how much closer a member is to their own segment than to the other</li>
+          <li>Every check reruns the full method, not a sample</li>
+        </ul>
+      </div>
+    </div>
+    <figure class="viz reveal" style="margin-top:2.5rem" data-chart="elbow" aria-labelledby="t-elbow">
+      <div class="viz-head"><div><div class="viz-title" id="t-elbow">How many segments? Elbow and silhouette agree on two</div><div class="viz-sub">K-means++ on all seven fields, age and income standardised</div></div><button class="viz-btn" type="button" aria-pressed="false">Table</button></div>
+      <div class="viz-plot"></div>
+      <div class="viz-table-wrap"></div>
+      <p class="viz-note">Inertia falls by <strong>62%</strong> from one segment to two, then by 6–20% with each further segment. Silhouette peaks at two (0.545); four segments (0.452) score slightly above three (0.433) but split the Established members by age and city rather than finding a new group.</p>
+    </figure>
+    <p class="fine reveal">The original notebook's agglomerative cell used complete linkage, while the report's table matched Ward, scikit-learn's default. The notebook in the repository now uses Ward and a fixed k-means seed, so it reproduces the report: k-means 1,024 and 976 members, Ward 992 and 1,008.</p>
+  </div>
+</section>
+
+<!-- ═══ 04 FINDINGS ═══ -->
+<section id="findings">
+  <div class="container">
+    <div class="section-header reveal">
+      <p class="eyebrow">04 · What the data says</p>
+      <h2 class="heading">Six findings on<br/><em>who the members are.</em></h2>
+    </div>
+    <div class="method-note reveal">
+      <div><h3>Segments</h3>K-means++ on all seven fields with age and income standardised, k = 2. Named by life stage: <strong>Starters</strong> and <strong>Established</strong>.</div>
+      <div><h3>Agreement</h3>The share of members that another method or encoding puts in the same segment, after matching labels.</div>
+      <div><h3>Read with care</h3>Seven membership fields and no behaviour: the data says <strong>who members are</strong>, not how often they come, what they pay or who leaves.</div>
+    </div>
+
+    <!-- F1 -->
+    <article class="finding first">
+      <div class="finding-text reveal">
+        <div class="finding-num">01</div>
+        <h3>The data has one axis, <em>not seven.</em></h3>
+        <p>Income follows age almost exactly: <strong>income ≈ −$61,784 + $4,882 × age</strong> (r = 0.9995), so age alone predicts a member's income with a typical error of about $1,400. Marital status moves with job type (rank correlation 0.95), education (0.88) and city size (0.79).</p>
+        <p>So the clustering finds the two ends of one line: younger, single, school-educated members in unskilled work in smaller cities, and older, non-single, university-educated professionals in big cities.</p>
+        <div class="so-what"><b>So what</b>Seven fields ask one question: how far along in life is this member? Two members at the same point on that line look identical to this data, however differently they use the gym.</div>
+      </div>
+      <div class="reveal">
+        <figure class="viz" data-chart="scatter" aria-labelledby="t-scatter">
+          <div class="viz-head"><div><div class="viz-title" id="t-scatter">Income is age in disguise</div><div class="viz-sub">All 2,000 members by age and self-reported income; each panel picks out one segment</div></div><button class="viz-btn" type="button" aria-pressed="false">Table</button></div>
+          <div class="viz-legend"><span><i class="sw sw-ink sw-dot"></i>In the segment named above the panel</span><span><i class="sw sw-ctx sw-dot"></i>In the other segment</span></div>
+          <div class="viz-plot"></div>
+          <div class="viz-table-wrap"></div>
+          <p class="viz-note">The dashed line is the straight-line fit, income ≈ −$61,784 + $4,882 × age (r = 0.9995). Both segments are common between ages 35 and 47: there, <strong>job, education and city</strong> decide the segment, not age.</p>
+        </figure>
+      </div>
+    </article>
+
+    <!-- F2 -->
+    <article class="finding">
+      <div class="finding-text reveal">
+        <div class="finding-num">02</div>
+        <h3>Two segments, <em>and every method agrees.</em></h3>
+        <p>Two segments score a silhouette of <strong>0.545</strong>, against 0.433 for three and 0.452 for four. Thirty random starts return the same split every time.</p>
+        <p>Ward linkage puts <strong>97.9%</strong> of members in the same segment as k-means, average linkage 98.8% and Gower distance 98.0%. Only complete linkage, which judges clusters by their farthest members, drifts to 90.7%.</p>
+        <div class="so-what"><b>So what</b>The split is real for this data: a team that reruns it gets the same two groups. Agreement alone doesn't make them useful, though; finding 01 says why.</div>
+      </div>
+      <div class="reveal">
+        <figure class="viz" data-chart="agree" aria-labelledby="t-agree">
+          <div class="viz-head"><div><div class="viz-title" id="t-agree">Same members, same segment, whichever way it's run</div><div class="viz-sub">Share of members given the same segment as k-means++ on the brief's seven fields</div></div><button class="viz-btn" type="button" aria-pressed="false">Table</button></div>
+          <div class="viz-legend"><span><i class="sw sw-ink sw-dot"></i>Agrees on 97% or more</span><span><i class="sw sw-ctx sw-dot"></i>Below 97%</span></div>
+          <div class="viz-plot"></div>
+          <div class="viz-table-wrap"></div>
+          <p class="viz-note">K-means and Ward disagree on 42 members: 37 that k-means calls Starters and Ward calls Established, and 5 the other way. The horizontal axis starts at 85%.</p>
+        </figure>
+      </div>
+    </article>
+
+    <!-- F3 -->
+    <article class="finding">
+      <div class="finding-text reveal">
+        <div class="finding-num">03</div>
+        <h3>Two profiles, <em>in proportions.</em></h3>
+        <p><strong>Starters</strong> (1,024, 51%): mean age 34, most aged 27–41; 97% single, 63.5% male; 97% with a high-school or other education; 96% unemployed or in unskilled work; 93% in small cities and none in big ones. Median income <strong>$102,356</strong>.</p>
+        <p><strong>Established</strong> (976, 49%): mean age 48, most aged 40–57; 99% non-single (married, separated, divorced or widowed), 85.6% female; 93% university-educated; 99% in skilled or management roles; 82% in big cities. Median income <strong>$171,798</strong>, and <strong>403 of them (41%) are 50 or older</strong>.</p>
+        <div class="so-what"><b>So what</b>Names should follow the numbers. My first report called Starters "young, single males", but 37% are women; and calling Established members "urban" misses the 178 who live in small cities.</div>
+      </div>
+      <div class="reveal">
+        <figure class="viz" data-chart="profile" aria-labelledby="t-profile">
+          <div class="viz-head"><div><div class="viz-title" id="t-profile">The two segments side by side</div><div class="viz-sub">Share of each segment with the attribute</div></div><button class="viz-btn" type="button" aria-pressed="false">Table</button></div>
+          <div class="viz-legend"><span><i class="sw sw-ctx"></i>Starters (1,024)</span><span><i class="sw sw-ink"></i>Established (976)</span></div>
+          <div class="viz-plot"></div>
+          <div class="viz-table-wrap"></div>
+        </figure>
+      </div>
+    </article>
+
+    <!-- F4 -->
+    <article class="finding">
+      <div class="finding-text reveal">
+        <div class="finding-num">04</div>
+        <h3>Where members live <em>already sorts them.</em></h3>
+        <p>All <strong>798 big-city members are Established</strong>, and all 72 mid-sized-city members are Starters. Small cities hold both: 952 Starters (84%) and <strong>178 Established members (16%)</strong>.</p>
+        <p>Those 178 look like big-city Established members in everything but address: mean age 49, median income $175,545, 97% in skilled or management work and 90% university-educated.</p>
+        <div class="so-what"><b>So what</b>If members train near home, a club's city predicts most of its members' segment before anyone fills in a form. Set formats by club, and keep a premium option where the 16% live.</div>
+      </div>
+      <div class="reveal">
+        <figure class="viz" data-chart="city" aria-labelledby="t-city">
+          <div class="viz-head"><div><div class="viz-title" id="t-city">Members by city size and segment</div><div class="viz-sub">Number of members</div></div><button class="viz-btn" type="button" aria-pressed="false">Table</button></div>
+          <div class="viz-legend"><span><i class="sw sw-ctx"></i>Starters</span><span><i class="sw sw-ink"></i>Established</span></div>
+          <div class="viz-plot"></div>
+          <div class="viz-table-wrap"></div>
+          <p class="viz-note">City size is where the member lives, the closest field this data has to the club they use.</p>
+        </figure>
+      </div>
+    </article>
+
+    <!-- F5 -->
+    <article class="finding">
+      <div class="finding-text reveal">
+        <div class="finding-num">05</div>
+        <h3>No need to ask <em>gender or marital status.</em></h3>
+        <p>Clustering without gender and marital status keeps <strong>99.4% of members in the same segment</strong>. Marital status alone matches the split for 98.0% of members, but job type alone matches 97.7%, and a two-part rule (big city, or a skilled or management job, means Established) matches <strong>97.8%</strong>.</p>
+        <p>Gender is the weakest guide: on its own it reproduces only 74% of the split. Starters are 36.5% female and Established members 85.6%.</p>
+        <div class="so-what"><b>So what</b>Segment on fields members expect a gym to use, such as where they live and the kind of work they do. Gender and marital status add almost nothing and carry the most risk.</div>
+      </div>
+      <div class="reveal">
+        <figure class="viz" data-chart="fields" aria-labelledby="t-fields">
+          <div class="viz-head"><div><div class="viz-title" id="t-fields">How well one field on its own reproduces the segments</div><div class="viz-sub">Share of members a one-field rule assigns to the same segment as the clustering</div></div><button class="viz-btn" type="button" aria-pressed="false">Table</button></div>
+          <div class="viz-legend"><span><i class="sw sw-ink"></i>Rule using city and job type</span><span><i class="sw sw-ctx"></i>One field</span></div>
+          <div class="viz-plot"></div>
+          <div class="viz-table-wrap"></div>
+          <p class="viz-note">For age and income the rule is the best single cut-off: older than 39, or an income above $130,335. Two segments of near-equal size mean a coin toss would score about 50%.</p>
+        </figure>
+      </div>
+    </article>
+
+    <!-- F6 -->
+    <article class="finding">
+      <div class="finding-text reveal">
+        <div class="finding-num">06</div>
+        <h3>One member in fifteen <em>sits in between.</em></h3>
+        <p><strong>134 members (6.7%)</strong> score a silhouette below 0.25: they are almost as close to the other segment as to their own. Most are non-single (88%), in skilled or management work (88%) and university-educated (77%), aged 28–59, and three in four live in small cities.</p>
+        <p>73 of them are small-city Established members from finding 04: by job and education they're Established, by address they're Starters.</p>
+        <div class="so-what"><b>So what</b>Two fixed offers will misfire for this group. Let members choose from a plan menu instead of guessing their segment.</div>
+      </div>
+      <div class="reveal">
+        <figure class="viz" data-chart="silhist" aria-labelledby="t-silhist">
+          <div class="viz-head"><div><div class="viz-title" id="t-silhist">How well each member fits their segment</div><div class="viz-sub">Members by silhouette score, in steps of 0.05</div></div><button class="viz-btn" type="button" aria-pressed="false">Table</button></div>
+          <div class="viz-legend"><span><i class="sw sw-ink"></i>Near the boundary (below 0.25)</span><span><i class="sw sw-ctx"></i>Clearly in one segment</span></div>
+          <div class="viz-plot"></div>
+          <div class="viz-table-wrap"></div>
+          <p class="viz-note">Silhouette runs from −1 to 1: near 1, a member sits deep inside their segment; near 0, on the line between the two; below 0, closer to the other segment. 11 members score below zero.</p>
+        </figure>
+      </div>
+    </article>
+  </div>
+</section>
+
+<!-- ═══ 05 ACTIONS ═══ -->
+<section id="actions" class="sec-off">
+  <div class="container">
+    <div class="section-header reveal">
+      <p class="eyebrow">05 · Short-term actions, next 0–6 months</p>
+      <h2 class="heading">What each team<br/><em>can do now.</em></h2>
+    </div>
+    <div class="tab-bar reveal" role="tablist" aria-label="Teams">
+      <button class="tab-btn" role="tab" id="tab-offers" aria-controls="panel-offers" aria-selected="true">Offers &amp; pricing</button>
+      <button class="tab-btn" role="tab" id="tab-clubs" aria-controls="panel-clubs" aria-selected="false" tabindex="-1">Clubs &amp; classes</button>
+      <button class="tab-btn" role="tab" id="tab-data" aria-controls="panel-data" aria-selected="false" tabindex="-1">Data &amp; sign-up</button>
+    </div>
+
+    <div class="tab-panel reveal" role="tabpanel" id="panel-offers" aria-labelledby="tab-offers" tabindex="0">
+      <p class="panel-intro">The segments differ most in <strong>life stage, job and city</strong>. Offers should follow those, and members on the boundary should choose for themselves.</p>
+      <div class="action-grid three">
+        <div class="action"><div class="action-top"><span class="action-num">01</span><h3>Lead with flexible plans for Starters</h3></div><div class="action-body">
+          <div class="ar"><span class="ar-k">Do</span><p>Promote month-to-month and off-peak plans with no joining fee in small and mid-sized city clubs.</p></div>
+          <div class="ar"><span class="ar-k">Why</span><p>Starters are <strong>1,024 members (51%)</strong>: 96% are unemployed or in unskilled work, and their median income ($102K) is <strong>40% below</strong> Established members' ($172K).</p></div>
+          <div class="ar ar-track"><span class="ar-k">Track</span><span class="kpi-chip">90-day retention of new Starters</span></div>
+        </div></div>
+        <div class="action"><div class="action-top"><span class="action-num">02</span><h3>Sell employer and premium plans to Established</h3></div><div class="action-body">
+          <div class="ar"><span class="ar-k">Do</span><p>Sign corporate wellness agreements with big-city employers, and add a premium tier with booked express sessions.</p></div>
+          <div class="ar"><span class="ar-k">Why</span><p><strong>99%</strong> of Established members work in skilled or management roles, and <strong>82%</strong> live in big cities.</p></div>
+          <div class="ar ar-track"><span class="ar-k">Track</span><span class="kpi-chip">Members joining through employer agreements</span></div>
+        </div></div>
+        <div class="action"><div class="action-top"><span class="action-num">03</span><h3>Let the in-between members choose</h3></div><div class="action-body">
+          <div class="ar"><span class="ar-k">Do</span><p>Show every new member the same three tiers (flex, standard and premium) and let them pick, instead of pushing one segment's offer.</p></div>
+          <div class="ar"><span class="ar-k">Why</span><p><strong>134 members (6.7%)</strong> sit between the segments; 73 are Established members in small cities who would otherwise get Starter offers.</p></div>
+          <div class="ar ar-track"><span class="ar-k">Track</span><span class="kpi-chip">Tier mix and upgrades by segment</span></div>
+        </div></div>
+      </div>
+    </div>
+
+    <div class="tab-panel" role="tabpanel" id="panel-clubs" aria-labelledby="tab-clubs" tabindex="0" hidden>
+      <p class="panel-intro">Location sorts the members before marketing does: <strong>every big-city member is Established</strong>, and 84% of small-city members are Starters.</p>
+      <div class="action-grid three">
+        <div class="action"><div class="action-top"><span class="action-num">04</span><h3>Set each club's format by its city</h3></div><div class="action-body">
+          <div class="ar"><span class="ar-k">Do</span><p>Run the Established format (lunchtime and after-work express classes, premium tier) in big-city clubs, and the Starter format (flexible plans, community classes) in small and mid-sized city clubs.</p></div>
+          <div class="ar"><span class="ar-k">Why</span><p>All <strong>798 big-city members</strong> are Established; all 72 mid-sized-city members and <strong>952 of 1,130</strong> small-city members are Starters.</p></div>
+          <div class="ar ar-track"><span class="ar-k">Track</span><span class="kpi-chip">Joins and 90-day retention by club format</span></div>
+        </div></div>
+        <div class="action"><div class="action-top"><span class="action-num">05</span><h3>Keep a premium option in small-city clubs</h3></div><div class="action-body">
+          <div class="ar"><span class="ar-k">Do</span><p>Carry the premium tier and an evening class block in small-city clubs too.</p></div>
+          <div class="ar"><span class="ar-k">Why</span><p><strong>178 Established members</strong> (16% of small-city members) live there: mean age 49, median income $175,545, 97% in skilled or management work.</p></div>
+          <div class="ar ar-track"><span class="ar-k">Track</span><span class="kpi-chip">Premium take-up in small-city clubs</span></div>
+        </div></div>
+        <div class="action"><div class="action-top"><span class="action-num">06</span><h3>Programme for members over 50</h3></div><div class="action-body">
+          <div class="ar"><span class="ar-k">Do</span><p>Add strength, mobility and low-impact classes at off-peak times in big-city clubs.</p></div>
+          <div class="ar"><span class="ar-k">Why</span><p><strong>403 Established members (41%)</strong> are 50 or older and 54 are 60 or older; Starters include just one member aged 50 or over.</p></div>
+          <div class="ar ar-track"><span class="ar-k">Track</span><span class="kpi-chip">Class fill rate and over-50 retention</span></div>
+        </div></div>
+      </div>
+    </div>
+
+    <div class="tab-panel" role="tabpanel" id="panel-data" aria-labelledby="tab-data" tabindex="0" hidden>
+      <p class="panel-intro">The membership details hold seven fields that <strong>describe one life stage</strong>. Ask for fewer, and start recording what members do.</p>
+      <div class="action-grid three">
+        <div class="action"><div class="action-top"><span class="action-num">07</span><h3>Drop income from the sign-up form</h3></div><div class="action-body">
+          <div class="ar"><span class="ar-k">Do</span><p>Stop asking members for their income, and let the plan they choose signal what they're willing to pay.</p></div>
+          <div class="ar"><span class="ar-k">Why</span><p>Income follows age almost exactly (<strong>r = 0.9995</strong>), so it adds almost nothing that age doesn't already say, and it's one of the most personal questions a member is asked.</p></div>
+          <div class="ar ar-track"><span class="ar-k">Track</span><span class="kpi-chip">Sign-up completion rate</span></div>
+        </div></div>
+        <div class="action"><div class="action-top"><span class="action-num">08</span><h3>Assign segments without gender or marital status</h3></div><div class="action-body">
+          <div class="ar"><span class="ar-k">Do</span><p>Assign each member a segment from city and job type: big city, or a skilled or management job, means Established; otherwise Starter.</p></div>
+          <div class="ar"><span class="ar-k">Why</span><p>The rule matches the clustering for <strong>97.8%</strong> of members, and dropping gender and marital status keeps <strong>99.4%</strong> in the same segment.</p></div>
+          <div class="ar ar-track"><span class="ar-k">Track</span><span class="kpi-chip">Rule against a quarterly re-cluster</span></div>
+        </div></div>
+        <div class="action"><div class="action-top"><span class="action-num">09</span><h3>Start recording behaviour</h3></div><div class="action-body">
+          <div class="ar"><span class="ar-k">Do</span><p>Log visits per week, class bookings, plan, tenure and the reason for every cancellation.</p></div>
+          <div class="ar"><span class="ar-k">Why</span><p>All seven fields describe one life-stage axis; <strong>none says who visits, who leaves or what they'd pay for</strong>.</p></div>
+          <div class="ar ar-track"><span class="ar-k">Track</span><span class="kpi-chip">Members with 90 days of visit data</span></div>
+        </div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ 06 STRATEGY ═══ -->
+<section id="strategy">
+  <div class="container">
+    <div class="section-header reveal">
+      <p class="eyebrow">06 · Long-term strategy, 1–3 years</p>
+      <h2 class="heading">Know the member,<br/><em>shape the clubs.</em></h2>
+      <p class="lede">The short-term actions use today's two segments. The long-term plan moves from membership details to <strong>what members do</strong>, and fits each club to the members it actually serves.</p>
+    </div>
+    <div class="roadmap reveal" role="table" aria-label="Three-horizon roadmap">
+      <div class="rm-corner" role="columnheader">Track</div>
+      <div class="rm-head" role="columnheader"><b>Now</b><span>0–6 months</span></div>
+      <div class="rm-head" role="columnheader"><b>Next</b><span>6–18 months</span></div>
+      <div class="rm-head" role="columnheader"><b>Later</b><span>18–36 months</span></div>
+
+      <div class="rm-track" role="rowheader"><h3>Know the member</h3><p>Marketing, data &amp; CRM</p></div>
+      <div class="rm-cell" role="cell"><span class="rm-when">Now · 0–6 months</span><h4>Behaviour on file</h4><p>Visits, class bookings, plan and tenure for every member, and <strong>a reason for every cancellation</strong>.</p></div>
+      <div class="rm-cell" role="cell"><span class="rm-when">Next · 6–18 months</span><h4>Segments that predict</h4><p>Re-segment within each life stage on visits, class mix and tenure, and keep only segments that differ in <strong>90-day retention</strong>.</p></div>
+      <div class="rm-cell" role="cell"><span class="rm-when">Later · 18–36 months</span><h4>Offers sized to value</h4><p>Predict churn and lifetime value, size retention offers to each member's value, and test them against a <strong>held-out control group</strong>.</p></div>
+
+      <div class="rm-track" role="rowheader"><h3>Shape the clubs</h3><p>Club operations, product</p></div>
+      <div class="rm-cell" role="cell"><span class="rm-when">Now · 0–6 months</span><h4>Formats by city</h4><p>The Starter format in small and mid-sized cities, the Established format in big cities, and <strong>a premium option in small-city clubs</strong>.</p></div>
+      <div class="rm-cell" role="cell"><span class="rm-when">Next · 6–18 months</span><h4>Test the plan menu</h4><p>Pilot the three-tier menu in matched pairs of clubs, and keep the version that lifts <strong>joins and 90-day retention</strong>.</p></div>
+      <div class="rm-cell" role="cell"><span class="rm-when">Later · 18–36 months</span><h4>Plan the network</h4><p>Use each city's segment mix and growth to decide where to refit, open or add <strong>express formats near workplaces</strong>.</p></div>
+    </div>
+    <div class="measure-grid reveal">
+      <div class="measure"><span class="card-label">Member scorecard</span><ul><li>90-day retention by segment</li><li>Visits per member per week</li><li>Upgrades between tiers</li></ul></div>
+      <div class="measure"><span class="card-label">Club scorecard</span><ul><li>Joins by club format</li><li>Class fill rate, including over-50 classes</li><li>Members joining through employer agreements</li></ul></div>
+    </div>
+
+    <h3 class="subhead reveal" style="margin-top:4rem">What carries over</h3>
+    <div class="lessons reveal">
+      <div class="lesson"><h3>Read the fields before the clusters</h3><p>Income repeated age (r = 0.9995). Spotting that first explains why <strong>every method agreed</strong>.</p></div>
+      <div class="lesson"><h3>Report proportions, not modes</h3><p>A cluster labelled "male" was <strong>36.5% female</strong>. Percentages keep segment names honest.</p></div>
+      <div class="lesson"><h3>Agreement isn't insight</h3><p>Methods agree when the data has one axis. Whether a segment matters depends on <strong>behaviour this data doesn't have</strong>.</p></div>
+      <div class="lesson"><h3>Ask for less</h3><p>The segments held for <strong>99.4% of members</strong> without gender or marital status.</p></div>
+    </div>
+
+    <h3 class="subhead reveal" style="margin-top:3.5rem">What I'd change next time</h3>
+    <ul class="next-list reveal">
+      <li>Use a distance built for mixed data, such as <strong>Gower or k-prototypes</strong>, from the start.</li>
+      <li>Judge segments by an <strong>outcome</strong>, such as retention or visits, not by silhouette alone.</li>
+      <li>Collect behaviour first, then <strong>test offers against a control group</strong> before rolling them out.</li>
+      <li>Re-run the segmentation on <strong>each quarter's new members</strong> to see whether it holds.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ═══ CONTACT ═══ -->
+<section id="contact">
+  <div class="container">
+    <div class="contact-grid">
+      <div class="reveal">
+        <div class="section-header">
+          <p class="eyebrow">Get in touch</p>
+          <h2 class="heading">Let's build something<br/><em>insightful.</em></h2>
+        </div>
+        <p class="contact-intro">Open to data analyst, BI analyst and analytics engineer roles in Sydney. Happy to walk through the clustering, the robustness checks or the recommendations.</p>
+        <div class="contact-details">
+          <div class="contact-row"><span class="contact-label">Email</span><span class="contact-val"><a href="mailto:rachel.hantran@gmail.com">rachel.hantran@gmail.com</a></span></div>
+          <div class="contact-row"><span class="contact-label">GitHub</span><span class="contact-val"><a href="https://github.com/racheltran184" target="_blank" rel="noopener">github.com/racheltran184</a></span></div>
+          <div class="contact-row"><span class="contact-label">LinkedIn</span><span class="contact-val"><a href="https://www.linkedin.com/in/racheltran184/" target="_blank" rel="noopener">linkedin.com/in/racheltran184</a></span></div>
+          <div class="contact-row"><span class="contact-label">Portfolio</span><span class="contact-val"><a href="https://racheltran.vercel.app/">racheltran.vercel.app</a></span></div>
+        </div>
+      </div>
+      <div class="reveal">
+        <p class="contact-right-big">Ready to<br/>turn data into<br/><em>impact?</em></p>
+        <div class="contact-btns">
+          <a href="https://racheltran.vercel.app/" class="btn btn-white">More projects →</a>
+          <a href="https://github.com/racheltran184/Python-Project-3" target="_blank" rel="noopener" class="btn btn-white-ghost">View the code ↗</a>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+</main>
+
+<!-- ═══ FOOTER ═══ -->
+<footer>
+  <span>© 2026 Rachel Tran</span>
+  <span>Data analyst · Sydney, Australia</span>
+  <a href="#hero">Back to top ↑</a>
+</footer>
+<p class="disclaimer">Individual student project for a postgraduate predictive analytics unit, taken deeper for this page. The gym chain is a teaching case and its 2,000 member records came with the brief; income follows age almost exactly (r = 0.9995), which suggests generated data. Figures describe that dataset, and the recommendations are illustrative.</p>
+
+<script>
+/* ═══════════════════════════════════════
+   DATA — every plotted number, written by deep_dive.py from data/data.csv
+   ═══════════════════════════════════════ */
+const DATA = {"totals":{"members":2000,"fields":7,"missing":0,"duplicates":3},"eda":{"Gender":[{"k":"Male","n":791,"share":39.55},{"k":"Female","n":1209,"share":60.45}],"Marital Status":[{"k":"Single","n":999,"share":49.95},{"k":"Non-single","n":1001,"share":50.05}],"Education":[{"k":"Other / unknown","n":192,"share":9.6},{"k":"High school","n":877,"share":43.85},{"k":"University","n":757,"share":37.85},{"k":"Graduate school","n":174,"share":8.7}],"Occupation":[{"k":"Unemployed / unskilled","n":992,"share":49.6},{"k":"Skilled employee / official","n":791,"share":39.55},{"k":"Management / self-employed","n":217,"share":10.85}],"Settlement Size":[{"k":"Small city","n":1130,"share":56.5},{"k":"Mid-sized city","n":72,"share":3.6},{"k":"Big city","n":798,"share":39.9}]},"numeric":{"Age":{"mean":40.8235,"median":40.0,"sd":9.455847623409472,"min":20.0,"max":76.0,"skew":0.3377738600959746},"Income":{"mean":137516.1965,"median":133004.0,"sd":46184.296587536446,"min":35832.0,"max":309364.0,"skew":0.3420116789228819}},"spearman":{"fields":["Gender","Marital Status","Age","Education","Income","Occupation","Settlement Size"],"r":[[1.0,0.523,0.393,0.461,0.394,0.495,0.403],[0.523,1.0,0.758,0.88,0.759,0.952,0.787],[0.393,0.758,1.0,0.667,0.999,0.722,0.605],[0.461,0.88,0.667,1.0,0.668,0.845,0.691],[0.394,0.759,0.999,0.668,1.0,0.722,0.606],[0.495,0.952,0.722,0.845,0.722,1.0,0.756],[0.403,0.787,0.605,0.691,0.606,0.756,1.0]]},"income_age":{"slope":4881.990152741184,"intercept":-61783.72850042979,"r":0.999546564400075,"r2":0.9990933344039934,"resid_sd":1390.6501971341422,"resid_max":2510.3291832175455},"elbow":[{"k":1,"inertia":8987.94999999999},{"k":2,"inertia":3389.4382845572973},{"k":3,"inertia":2697.0992165132843},{"k":4,"inertia":2194.4238584717414},{"k":5,"inertia":1792.631565302468},{"k":6,"inertia":1633.1961515821993},{"k":7,"inertia":1487.4665685371815},{"k":8,"inertia":1355.2621698263804},{"k":9,"inertia":1271.7953537788455},{"k":10,"inertia":1165.112869662147}],"silhouette":[{"k":2,"score":0.5449851891782751},{"k":3,"score":0.43291059761553685},{"k":4,"score":0.45231884455945087},{"k":5,"score":0.3398958484474035},{"k":6,"score":0.30375989818004184},{"k":7,"score":0.31074748523493745},{"k":8,"score":0.31231759061879166},{"k":9,"score":0.3027112133839031},{"k":10,"score":0.3408246042629081}],"segments":{"Starters":{"n":1024,"share":51.2,"female":36.5234375,"non_single":3.22265625,"age_mean":33.8134765625,"age_p10":27.0,"age_p90":41.0,"income_median":102356.0,"income_p10":69536.2,"income_p90":138052.60000000003,"education":{"Other / unknown":18.75,"High school":78.61328125,"University":2.44140625,"Graduate school":0.1953125},"occupation":{"Unemployed / unskilled":96.19140625,"Skilled employee / official":3.7109375,"Management / self-employed":0.09765625},"city":{"Small city":92.96875,"Mid-sized city":7.03125,"Big city":0.0},"age_bands":{"20-29":21.77734375,"30-39":64.2578125,"40-49":13.8671875,"50-59":0.09765625,"60+":0.0},"over_50":1,"over_60":0,"under_30":223,"silhouette":0.613503222376137},"Established":{"n":976,"share":48.8,"female":85.55327868852459,"non_single":99.18032786885246,"age_mean":48.17827868852459,"age_p10":40.0,"age_p90":57.0,"income_median":171797.5,"income_p10":132194.5,"income_p90":216162.5,"education":{"Other / unknown":0.0,"High school":7.377049180327869,"University":75.0,"Graduate school":17.62295081967213},"occupation":{"Unemployed / unskilled":0.7172131147540983,"Skilled employee / official":77.15163934426229,"Management / self-employed":22.131147540983605},"city":{"Small city":18.237704918032787,"Mid-sized city":0.0,"Big city":81.76229508196722},"age_bands":{"20-29":0.0,"30-39":9.01639344262295,"40-49":49.69262295081967,"50-59":35.75819672131148,"60+":5.532786885245901},"over_50":403,"over_60":54,"under_30":0,"silhouette":0.47309741664281346}},"ward_check":{"sizes":[1008,992],"age":[47.7,33.83],"income":[171149.22,103340.7]},"overlap":[[987,37],[5,971]],"agreement":[{"k":"K-means++, 30 random starts","group":"seeds","same":100.0,"ari":1.0,"silhouette":null},{"k":"Agglomerative, Ward linkage","group":"linkage","same":97.89999999999999,"ari":0.9177228641597789,"silhouette":0.5381857138142321},{"k":"Agglomerative, average linkage","group":"linkage","same":98.8,"ari":0.9525522779284483,"silhouette":0.5421953614431212},{"k":"Agglomerative, complete linkage","group":"linkage","same":90.64999999999999,"ari":0.6607987269868181,"silhouette":0.46193222660758126},{"k":"All seven fields standardised","group":"encoding","same":98.1,"ari":0.9254067061663587,"silhouette":0.5607455796871543},{"k":"Without income","group":"encoding","same":98.7,"ari":0.9486503258501219,"silhouette":0.5634637216088331},{"k":"Without gender and marital status","group":"encoding","same":99.4,"ari":0.9761320648418659,"silhouette":0.5578806365338915},{"k":"Gower distance, average linkage","group":"distance","same":97.95,"ari":0.9196408234607963,"silhouette":0.7134624778037343}],"single_fields":[{"k":"Gender","accuracy":74.25,"cut":null},{"k":"Marital Status","accuracy":97.95,"cut":null},{"k":"Age","accuracy":88.44999999999999,"cut":39.0},{"k":"Education","accuracy":95.05,"cut":null},{"k":"Income","accuracy":88.7,"cut":130335.0},{"k":"Occupation","accuracy":97.7,"cut":null},{"k":"Settlement Size","accuracy":91.1,"cut":null}],"rule_city_occupation":97.8,"city":[{"k":"Big city","starters":0,"established":798},{"k":"Mid-sized city","starters":72,"established":0},{"k":"Small city","starters":952,"established":178}],"small_city_established":{"n":178,"age_mean":49.1123595505618,"income_median":175544.5,"skilled_or_mgmt":97.19101123595506,"university_plus":90.4494382022472},"borderline":{"n":134,"share":6.7,"small_city":75.3731343283582,"skilled_or_mgmt":88.05970149253731,"university_plus":76.86567164179104,"non_single":88.05970149253731,"age_mean":41.149253731343286,"age_min":28,"age_max":59,"small_city_established":73},"silhouette_hist":[6,5,3,17,23,38,42,53,74,97,80,116,191,309,390,343,213,0],"points":[[39,130.6,1,0],[29,80.3,0,0],[35,107.1,0,0],[56,214.0,1,0],[45,158.1,1,0],[40,135.3,0,0],[49,179.0,1,0],[53,196.9,1,0],[40,131.5,0,0],[54,203.6,1,0],[31,88.9,0,0],[41,138.4,0,0],[32,94.2,0,0],[26,66.8,0,0],[44,152.0,1,0],[50,181.2,1,0],[49,176.6,1,0],[28,75.1,0,0],[48,172.9,1,0],[45,158.3,1,0],[32,92.3,0,0],[35,108.4,0,0],[54,202.7,1,0],[39,128.7,1,0],[31,89.5,0,0],[35,106.9,1,1],[33,98.8,0,0],[48,173.4,1,0],[45,157.8,0,0],[29,77.8,0,0],[41,139.3,1,0],[28,76.5,0,0],[36,112.9,0,0],[26,64.4,0,0],[37,119.9,0,1],[43,147.2,1,0],[45,156.9,1,1],[32,93.2,0,0],[54,204.0,1,0],[34,103.9,1,1],[28,75.5,0,0],[34,104.3,0,0],[40,134.3,1,1],[32,96.7,0,0],[45,155.7,1,1],[32,96.6,0,0],[36,114.3,0,0],[36,113.3,0,0],[32,94.3,0,0],[40,135.6,1,0],[28,73.8,0,0],[36,114.7,0,0],[42,143.6,1,0],[24,53.8,0,0],[52,189.8,1,0],[26,66.5,0,0],[49,176.6,1,0],[40,134.8,0,0],[59,228.3,1,0],[36,115.6,0,0],[41,139.7,1,0],[49,175.4,1,0],[37,121.3,0,0],[36,114.6,0,0],[49,179.0,1,0],[38,125.1,0,0],[33,98.0,0,0],[32,94.8,0,0],[55,205.4,1,0],[31,89.6,0,0],[54,203.3,1,0],[35,111.4,0,0],[45,158.3,0,0],[44,153.5,1,0],[37,116.7,0,0],[31,91.8,0,0],[37,117.4,0,0],[49,179.9,1,0],[32,94.2,0,0],[38,122.2,0,0],[29,79.5,0,0],[42,144.4,1,0],[42,141.7,0,0],[31,89.9,0,0],[29,77.9,0,0],[48,173.0,1,0],[52,193.3,1,0],[41,136.6,1,1],[42,143.9,0,0],[51,189.5,1,0],[47,166.1,1,0],[22,47.8,0,0],[29,78.5,0,0],[56,213.9,1,0],[36,112.8,0,0],[49,176.8,0,1],[34,103.6,0,0],[31,90.7,0,0],[29,77.7,0,0],[44,151.8,1,1],[34,105.1,0,0],[58,220.9,1,0],[39,127.9,0,0],[48,173.0,1,0],[37,117.6,1,0],[49,177.2,1,0],[50,183.5,1,0],[44,152.5,1,0],[32,92.7,0,0],[40,134.1,0,0],[45,158.7,0,0],[46,162.0,1,0],[46,161.7,1,0],[43,148.8,0,0],[52,193.4,1,0],[33,98.3,0,0],[26,63.0,0,0],[28,75.2,0,0],[26,65.0,0,0],[51,186.5,0,1],[39,127.7,0,0],[35,109.3,0,0],[47,165.8,1,0],[38,122.5,1,0],[51,188.1,1,0],[24,57.2,0,0],[37,119.1,1,1],[36,114.2,0,0],[38,121.5,1,0],[41,137.8,1,0],[38,123.2,0,0],[42,143.4,0,0],[51,187.2,1,0],[38,123.0,1,0],[30,83.1,0,0],[56,211.8,1,0],[30,82.8,0,0],[50,181.9,1,0],[46,165.0,1,0],[49,177.5,1,0],[37,120.9,0,0],[29,77.7,0,0],[54,203.3,1,0],[38,122.9,0,0],[36,113.5,0,0],[48,172.2,1,0],[34,104.2,0,0],[28,74.5,0,0],[42,141.7,0,0],[37,120.0,0,0],[36,115.4,0,0],[54,201.0,1,0],[32,93.8,0,0],[35,107.7,0,0],[55,205.9,1,0],[42,141.4,1,0],[44,154.9,1,0],[55,205.2,1,0],[42,145.4,0,0],[38,124.8,0,0],[61,238.2,1,0],[43,148.2,1,1],[56,212.0,1,0],[33,98.5,0,0],[43,146.9,1,0],[34,103.4,1,1],[40,134.8,1,0],[40,132.6,1,0],[50,180.0,1,0],[26,64.8,0,0],[44,154.2,1,0],[39,127.5,0,0],[27,68.6,0,0],[39,129.7,0,0],[35,106.8,0,0],[38,124.2,1,0],[52,194.1,1,0],[33,101.2,0,0],[44,154.7,1,0],[56,211.6,1,0],[56,210.8,1,0],[62,240.1,1,0],[32,93.4,0,0],[48,172.4,1,0],[41,136.0,1,0],[50,182.5,1,0],[37,116.6,1,0],[47,168.5,1,0],[31,88.8,0,0],[32,93.8,0,0],[34,104.5,0,0],[40,132.4,1,0],[22,45.0,0,0],[50,184.1,1,0],[54,203.3,1,0],[31,88.0,0,0],[58,222.1,1,0],[46,160.8,1,0],[29,79.8,0,0],[38,125.6,0,0],[29,80.4,0,0],[33,101.3,0,0],[23,51.0,0,0],[36,113.9,1,0],[34,102.8,0,0],[40,133.4,1,0],[60,233.4,1,0],[36,113.8,1,0],[59,223.9,1,0],[54,200.9,1,0],[31,87.5,0,0],[37,120.7,0,0],[29,80.9,0,0],[27,68.6,0,0],[54,203.8,1,0],[50,184.6,1,0],[55,208.0,1,0],[57,217.9,1,0],[28,75.6,0,0],[47,166.9,1,0],[33,97.8,0,0],[45,159.8,1,0],[48,174.8,1,0],[36,115.6,0,0],[47,166.4,1,0],[48,170.3,1,0],[54,203.4,1,0],[51,185.2,1,0],[48,171.4,1,0],[26,63.4,0,0],[74,299.9,1,0],[44,155.3,0,0],[41,138.9,1,0],[33,99.6,0,0],[32,93.6,0,0],[52,193.5,1,0],[24,56.4,0,0],[54,200.1,1,0],[50,180.8,1,1],[35,107.8,0,1],[43,149.0,1,0],[40,132.5,1,0],[55,208.2,1,0],[48,172.2,1,0],[38,122.3,0,0],[46,161.1,1,0],[46,164.5,1,0],[36,116.4,0,0],[41,136.9,0,0],[61,236.3,1,0],[32,92.7,0,1],[42,142.9,0,0],[58,221.9,1,0],[35,109.2,0,0],[55,206.1,1,0],[33,100.7,0,0],[47,168.0,1,0],[49,176.9,1,0],[47,166.6,1,0],[32,95.7,0,0],[42,145.6,0,0],[46,164.9,1,0],[50,181.5,1,0],[26,64.6,0,0],[34,103.7,0,0],[45,156.0,1,0],[34,104.0,0,0],[45,156.8,1,0],[51,186.7,1,1],[40,131.8,0,0],[48,173.2,1,0],[31,90.2,0,0],[29,80.5,0,0],[46,161.7,1,0],[32,95.9,0,0],[44,150.8,0,0],[31,91.3,0,0],[36,112.1,0,0],[34,104.2,0,0],[27,70.6,0,0],[38,121.8,0,0],[46,163.0,1,0],[47,166.0,0,0],[28,74.7,0,0],[54,202.9,1,0],[41,136.6,1,0],[36,112.0,0,0],[37,117.3,0,0],[50,182.8,1,0],[30,86.5,0,0],[48,173.3,1,0],[35,109.9,0,0],[52,191.9,1,0],[40,133.4,1,0],[37,118.5,0,0],[53,198.8,1,0],[30,86.4,0,0],[40,134.8,1,0],[32,94.4,0,0],[44,150.7,1,0],[36,112.5,0,0],[28,72.5,0,0],[31,90.6,0,0],[35,107.2,0,0],[42,145.6,0,0],[27,68.7,0,0],[32,93.4,0,0],[33,98.6,0,0],[47,165.5,1,0],[38,125.1,0,0],[31,91.8,0,0],[34,103.7,0,0],[39,126.6,0,0],[43,146.2,1,0],[36,115.3,0,0],[30,84.1,0,0],[41,140.3,1,1],[39,129.0,0,1],[44,152.6,1,0],[55,209.0,1,0],[41,137.2,1,1],[36,114.1,0,0],[36,115.0,0,0],[47,167.8,1,0],[44,151.9,1,1],[39,129.1,0,0],[35,108.7,0,0],[47,166.5,0,1],[38,122.7,0,0],[45,156.8,1,0],[52,193.4,1,0],[53,195.8,1,0],[54,202.1,1,0],[22,43.7,0,0],[47,168.8,1,0],[46,162.1,0,0],[27,72.4,0,0],[39,126.3,0,0],[58,221.5,1,0],[47,168.1,1,0],[38,121.3,0,0],[36,115.0,0,0],[51,185.4,1,0],[43,149.3,0,0],[40,134.2,1,1],[51,186.6,1,0],[57,217.6,1,0],[33,100.2,0,0],[38,121.7,0,0],[48,173.3,1,0],[47,168.7,1,0],[45,160.3,1,0],[45,160.1,1,0],[30,86.8,0,0],[59,226.7,1,0],[42,140.9,1,0],[30,86.9,0,0],[38,122.1,0,1],[37,117.2,0,0],[46,161.7,0,0],[49,177.3,1,0],[55,208.9,1,0],[40,134.4,1,0],[32,95.3,0,0],[56,213.9,1,0],[39,128.8,0,0],[58,221.8,1,0],[35,108.6,1,0],[53,199.0,1,0],[28,73.1,0,0],[38,125.3,0,0],[30,82.3,0,0],[34,103.4,0,0],[40,131.2,0,0],[27,72.3,0,0],[53,197.8,1,0],[45,155.9,0,0],[34,103.3,0,0],[37,117.6,1,1],[33,98.4,0,0],[33,98.2,0,0],[45,156.7,1,1],[26,66.0,0,0],[45,156.1,1,0],[45,158.6,1,0],[33,100.4,0,0],[63,245.6,1,0],[35,109.4,0,0],[42,144.7,0,0],[52,190.9,1,0],[41,137.5,1,0],[30,82.9,0,0],[63,245.0,1,0],[29,79.5,0,0],[37,119.2,1,0],[63,247.9,1,0],[24,56.3,0,0],[38,121.4,0,0],[31,88.1,0,0],[34,103.6,0,0],[28,75.4,0,0],[37,117.9,0,0],[45,157.2,1,0],[40,133.1,0,0],[42,143.6,1,0],[38,126.0,1,0],[52,192.0,1,0],[51,187.4,1,0],[42,142.4,0,0],[34,103.5,0,0],[51,185.3,1,0],[66,260.1,1,0],[52,193.2,1,0],[46,165.2,1,1],[45,158.9,1,0],[42,142.6,1,0],[48,170.7,1,0],[30,82.7,0,1],[30,87.1,0,0],[38,124.8,0,1],[51,186.4,1,0],[38,121.3,0,0],[46,163.3,0,0],[42,145.2,0,0],[44,152.4,1,0],[52,192.9,1,0],[54,201.5,1,0],[33,98.6,0,0],[59,228.2,1,0],[48,173.7,1,0],[51,189.2,1,0],[46,163.8,1,0],[52,191.4,1,0],[44,151.7,1,0],[44,151.3,0,0],[35,109.1,0,0],[45,156.9,1,0],[48,174.3,1,0],[43,149.4,1,1],[38,122.6,1,0],[38,121.9,1,0],[41,138.3,1,0],[58,219.1,1,0],[45,156.0,1,0],[49,176.1,1,0],[32,94.7,0,1],[20,35.8,0,0],[27,68.9,0,0],[29,79.8,0,0],[58,219.2,1,0],[49,177.0,0,1],[51,188.9,1,0],[36,115.0,0,0],[29,81.2,0,0],[50,180.6,1,0],[35,109.1,0,0],[44,151.5,1,0],[34,105.5,0,0],[44,153.7,1,0],[33,100.7,0,0],[29,81.5,0,0],[40,132.0,1,0],[43,147.0,0,0],[53,196.5,1,0],[64,249.2,1,0],[35,109.0,0,0],[32,96.3,0,0],[29,80.3,0,0],[30,83.6,0,0],[40,133.3,0,0],[34,105.5,0,0],[41,137.6,0,1],[48,173.5,1,0],[38,123.0,0,0],[34,102.9,0,0],[50,183.5,1,0],[51,188.7,1,0],[40,131.2,1,0],[55,206.3,1,0],[66,259.4,1,0],[27,68.8,0,0],[35,107.6,0,0],[26,64.1,0,0],[51,185.5,1,0],[31,92.0,0,0],[33,97.6,0,0],[35,110.1,0,0],[26,65.1,0,0],[46,161.2,1,0],[43,148.6,1,0],[40,131.9,1,1],[31,91.8,0,0],[33,98.9,0,1],[38,125.9,0,0],[36,116.0,1,0],[31,90.3,0,0],[53,196.9,1,0],[53,198.8,1,0],[37,118.1,0,0],[35,107.9,0,0],[45,158.5,1,0],[33,99.1,0,0],[40,135.3,0,0],[40,134.3,1,0],[36,111.6,0,0],[31,89.6,0,0],[31,89.5,0,0],[46,163.7,1,0],[39,130.8,0,0],[36,113.9,0,0],[42,145.1,0,0],[61,237.7,1,0],[50,182.9,1,0],[61,236.7,1,0],[56,211.7,1,0],[42,142.6,1,0],[65,256.8,1,0],[41,140.5,0,0],[51,188.2,1,0],[40,133.9,1,0],[32,96.9,0,0],[46,161.1,1,0],[32,93.6,0,0],[36,113.0,0,0],[26,65.5,0,0],[38,123.2,0,0],[41,136.5,0,0],[33,98.9,0,0],[48,170.5,1,0],[37,118.7,0,0],[34,105.2,0,0],[54,203.5,1,0],[43,146.7,0,0],[48,170.6,1,1],[40,135.1,0,0],[48,171.3,1,0],[28,75.0,0,0],[46,161.8,1,0],[39,128.7,1,1],[38,124.7,1,0],[48,170.9,1,0],[26,67.0,0,0],[41,137.9,1,0],[28,75.5,0,0],[45,156.7,1,1],[33,98.9,0,0],[27,69.5,0,0],[45,159.4,0,0],[53,195.5,1,0],[32,93.1,0,0],[33,98.2,0,0],[31,87.9,0,0],[28,73.8,0,0],[54,204.2,1,0],[36,111.8,0,0],[47,166.3,1,0],[54,202.8,1,0],[43,148.0,0,0],[38,122.8,1,0],[61,238.5,1,0],[41,136.2,1,0],[28,75.3,0,0],[28,74.5,0,0],[35,110.8,0,0],[40,131.6,1,1],[43,148.9,1,0],[38,124.9,0,1],[42,143.8,0,0],[49,177.9,1,0],[33,98.6,0,0],[31,87.7,0,0],[53,197.0,1,0],[53,195.5,1,0],[43,148.0,1,0],[46,164.5,0,0],[52,190.9,1,0],[33,100.5,0,0],[51,184.9,1,0],[55,204.9,1,0],[38,125.6,0,0],[29,79.2,0,0],[37,119.8,0,0],[36,112.1,1,1],[41,136.9,0,0],[51,189.2,1,0],[28,74.1,0,0],[43,148.3,1,0],[40,135.7,1,1],[47,166.4,1,0],[54,201.1,1,0],[46,161.9,1,0],[50,184.7,1,0],[45,156.3,1,0],[39,130.3,1,0],[36,114.0,0,0],[50,181.6,1,0],[46,161.0,1,0],[48,170.7,1,0],[39,127.1,0,0],[26,66.2,0,0],[61,236.8,1,0],[53,195.5,1,0],[49,176.9,1,0],[44,154.5,1,0],[37,119.8,0,0],[38,125.4,0,0],[52,192.4,1,0],[29,80.7,0,0],[37,119.3,0,1],[31,90.2,0,0],[46,165.0,1,0],[43,146.5,1,0],[29,79.4,0,0],[35,111.4,1,1],[65,254.3,1,0],[29,81.0,0,0],[33,101.8,0,0],[49,179.8,1,0],[55,208.2,1,0],[43,149.6,0,0],[30,85.7,0,0],[29,78.5,0,0],[49,175.9,1,0],[40,135.5,0,0],[36,114.8,0,0],[35,107.8,0,0],[40,134.5,0,1],[45,159.8,1,0],[51,185.5,1,0],[53,194.7,1,0],[54,200.0,1,0],[25,62.1,0,0],[27,70.7,0,0],[54,202.7,1,0],[38,124.8,0,0],[54,203.2,1,0],[56,213.7,1,0],[44,151.6,0,0],[52,191.9,1,0],[23,52.3,0,0],[49,176.2,1,0],[44,153.7,1,0],[55,209.1,1,0],[36,112.4,0,0],[36,114.4,1,0],[33,101.5,0,0],[39,130.6,1,1],[33,99.0,0,0],[33,101.1,0,0],[48,172.1,1,0],[28,74.3,0,0],[32,94.3,0,0],[40,135.4,1,1],[51,189.0,1,0],[41,136.2,1,0],[37,121.1,1,0],[33,97.4,0,0],[40,134.6,0,0],[34,105.5,0,0],[33,100.4,0,0],[39,128.7,0,1],[51,188.1,1,0],[28,73.2,0,0],[38,122.5,1,0],[41,139.2,1,0],[55,208.0,1,0],[38,123.6,0,0],[41,137.7,1,1],[29,81.1,0,0],[51,186.2,1,0],[40,132.0,1,0],[41,137.9,1,0],[26,64.2,0,0],[33,99.0,0,0],[37,121.0,0,0],[53,196.2,1,0],[24,57.8,0,0],[54,199.5,1,0],[52,193.6,1,0],[37,119.5,1,0],[35,108.7,1,0],[30,85.8,0,0],[36,114.3,0,1],[40,132.6,1,0],[33,100.8,0,0],[36,112.0,0,0],[31,87.9,0,0],[60,231.6,1,0],[42,141.9,1,1],[48,171.3,1,0],[48,174.9,1,0],[57,214.2,1,0],[37,116.9,0,1],[36,115.6,0,0],[33,101.3,0,0],[36,114.2,0,0],[37,120.0,0,0],[45,156.1,1,0],[31,87.6,0,0],[39,130.7,1,0],[30,82.6,0,0],[32,94.4,0,0],[36,112.9,1,0],[33,101.3,0,0],[48,171.1,1,0],[53,196.0,1,0],[40,132.0,1,0],[54,200.9,1,0],[25,59.2,0,0],[47,169.3,1,0],[33,100.3,1,1],[35,110.0,0,0],[32,94.7,0,0],[43,148.7,0,0],[38,122.8,1,0],[33,97.7,0,0],[33,98.5,0,0],[34,102.4,0,0],[52,194.3,1,0],[45,159.1,0,0],[48,172.8,1,0],[61,233.7,1,0],[30,85.8,0,0],[27,67.7,0,0],[35,109.7,0,0],[41,137.2,1,0],[47,166.3,1,0],[32,92.6,0,0],[48,170.2,1,0],[41,137.5,1,0],[55,207.2,1,0],[43,149.8,1,0],[63,247.4,1,0],[42,142.6,1,0],[38,123.3,0,0],[39,128.9,1,0],[41,139.0,1,1],[50,180.8,1,0],[34,104.6,0,0],[55,208.4,1,0],[39,128.9,1,0],[53,194.9,1,0],[33,100.9,0,0],[37,118.5,0,0],[53,197.0,1,0],[31,89.9,0,0],[42,145.7,1,0],[34,104.2,0,0],[40,132.8,1,1],[28,74.8,0,0],[24,55.4,0,0],[38,124.1,1,0],[54,203.0,1,0],[59,224.2,1,0],[52,193.2,1,0],[34,104.2,0,0],[48,170.7,1,0],[47,166.9,1,0],[24,53.3,0,0],[38,122.4,0,0],[35,111.2,0,0],[36,112.8,0,0],[50,181.0,1,0],[27,69.5,0,0],[39,128.1,1,0],[45,157.1,1,0],[35,108.5,0,0],[48,170.8,1,0],[27,68.3,0,0],[48,172.7,1,0],[53,196.6,1,0],[33,98.4,0,0],[31,87.3,0,0],[31,91.3,0,0],[53,197.9,1,0],[53,196.4,1,0],[46,160.9,0,0],[37,118.5,0,0],[37,119.3,0,0],[48,171.6,1,0],[52,191.5,1,0],[35,111.2,0,0],[35,110.2,1,1],[43,148.4,1,0],[36,113.2,0,0],[27,67.9,0,0],[32,95.4,0,0],[27,68.9,0,0],[36,111.6,1,0],[47,168.9,1,0],[47,169.6,1,0],[49,175.9,1,0],[50,183.5,1,0],[43,149.9,1,0],[35,109.6,0,0],[51,187.0,1,0],[42,143.9,1,1],[27,70.2,0,0],[43,145.9,1,1],[30,85.6,0,0],[52,191.4,1,0],[44,155.2,1,0],[35,109.4,0,0],[28,74.5,0,0],[38,121.8,0,0],[25,58.5,0,0],[45,156.4,1,0],[57,216.1,1,0],[51,185.0,1,0],[46,161.7,1,0],[34,103.7,0,0],[36,116.2,0,0],[35,108.1,1,1],[59,226.4,1,0],[54,202.3,1,1],[34,103.4,0,0],[37,118.5,1,0],[37,121.2,0,0],[34,101.9,0,1],[47,168.5,1,0],[61,236.4,1,0],[37,119.2,0,0],[34,104.8,1,1],[36,115.4,0,0],[25,59.5,0,0],[43,147.5,0,0],[31,87.4,0,0],[30,86.9,0,0],[32,94.2,0,0],[47,167.9,1,0],[46,160.6,1,0],[74,299.7,1,0],[30,86.5,0,0],[38,121.7,0,0],[35,108.2,0,0],[39,127.2,0,0],[44,153.6,0,0],[60,232.1,1,0],[35,107.6,0,0],[51,185.7,1,0],[32,92.9,0,0],[34,102.1,0,0],[34,104.8,0,0],[39,126.7,0,0],[35,107.1,0,0],[29,81.4,0,0],[59,226.5,1,1],[53,198.9,1,0],[34,104.9,0,0],[24,55.7,0,0],[29,81.4,0,0],[51,189.5,1,0],[46,162.9,1,1],[44,155.0,1,0],[41,137.2,1,0],[44,154.1,0,0],[33,98.6,0,0],[41,138.2,0,0],[39,128.7,0,0],[47,166.4,0,0],[56,213.4,1,0],[39,130.4,1,1],[43,147.1,1,0],[45,157.9,1,0],[38,125.1,1,0],[55,208.5,1,0],[55,207.2,1,0],[28,75.1,0,0],[51,186.0,1,0],[42,142.3,1,0],[57,215.2,1,0],[40,132.3,0,0],[43,149.2,1,0],[44,150.7,1,1],[27,68.0,0,0],[42,143.3,1,0],[31,90.4,0,0],[41,140.3,0,0],[49,178.3,1,0],[32,96.6,0,0],[42,143.0,1,0],[42,145.5,1,0],[35,109.6,0,0],[33,101.2,0,0],[55,205.8,1,0],[53,197.1,1,0],[30,86.1,0,0],[28,76.5,0,0],[48,172.1,1,0],[34,103.0,0,0],[51,187.3,1,0],[39,126.4,0,0],[48,173.9,1,0],[47,165.8,1,0],[36,115.9,0,0],[51,185.7,1,0],[45,156.3,1,0],[31,89.6,0,0],[36,115.8,0,0],[30,85.7,0,0],[40,134.2,1,0],[37,118.3,0,0],[40,131.4,0,0],[48,171.1,1,0],[32,92.4,0,0],[28,73.7,0,0],[31,88.5,0,0],[32,92.1,0,0],[43,148.3,1,0],[46,163.8,1,1],[54,200.5,1,0],[51,185.1,1,0],[47,170.0,1,0],[28,74.8,0,0],[29,78.4,0,0],[48,171.2,1,0],[46,162.8,0,0],[41,139.9,1,1],[35,109.6,0,0],[32,94.8,0,0],[27,69.0,0,0],[58,220.6,1,0],[43,146.3,1,0],[35,108.3,0,0],[58,222.4,1,0],[41,140.5,1,0],[29,81.6,0,0],[22,47.7,0,0],[61,237.3,1,0],[47,168.5,1,0],[56,212.5,1,0],[31,90.1,0,0],[46,164.9,1,0],[30,86.3,0,0],[29,81.6,0,0],[40,131.6,1,0],[31,90.2,0,0],[39,127.0,0,0],[41,137.5,1,0],[36,115.1,0,0],[62,239.8,1,0],[47,168.4,1,0],[55,207.4,1,0],[39,128.9,0,1],[43,146.9,1,0],[39,127.4,0,0],[41,136.5,0,0],[26,64.0,0,0],[26,62.9,0,0],[47,165.9,1,0],[47,169.0,1,0],[32,94.5,0,0],[50,184.4,1,0],[42,143.3,1,0],[32,92.9,0,0],[30,84.7,0,0],[45,159.4,0,0],[44,153.1,1,0],[61,238.3,1,0],[43,149.6,1,0],[49,175.5,1,1],[33,100.4,1,1],[33,100.6,0,0],[48,172.6,1,0],[52,191.5,1,0],[34,103.3,0,0],[30,86.2,0,0],[33,100.6,1,1],[47,169.7,0,0],[38,125.5,0,0],[38,123.0,0,0],[70,279.0,1,0],[46,164.8,1,0],[35,109.7,0,0],[46,164.7,1,0],[55,207.9,1,0],[36,111.8,0,0],[46,160.6,1,0],[41,140.4,1,0],[41,138.3,1,0],[34,106.1,0,0],[46,163.0,1,0],[26,64.4,0,0],[43,150.5,1,1],[42,144.1,1,1],[43,148.1,1,1],[27,69.3,0,0],[52,194.2,1,0],[33,101.3,0,0],[53,195.8,1,0],[33,101.7,0,0],[53,195.2,1,0],[40,133.3,1,0],[24,55.5,0,0],[51,187.1,1,0],[39,129.8,1,0],[46,162.9,0,1],[36,113.4,0,0],[34,105.2,0,1],[40,133.8,1,0],[57,216.7,1,0],[61,237.1,1,0],[26,67.3,0,0],[46,164.9,1,0],[55,206.5,1,0],[39,128.5,1,0],[52,190.4,1,1],[30,85.8,0,0],[58,222.7,1,0],[46,164.8,1,0],[32,93.0,0,0],[32,92.1,0,0],[48,170.5,1,0],[29,79.4,0,0],[57,217.3,1,0],[57,218.6,1,0],[37,116.9,0,0],[47,167.4,1,0],[46,163.9,0,0],[41,140.1,1,0],[33,100.3,0,0],[37,117.0,0,0],[38,122.4,0,0],[34,103.6,0,0],[29,77.5,0,0],[52,193.6,1,0],[38,124.6,0,0],[40,133.5,0,0],[36,113.1,0,0],[54,200.3,1,0],[36,116.0,0,0],[45,160.1,1,0],[56,211.1,1,0],[29,80.0,0,0],[24,56.5,0,0],[34,105.3,0,0],[37,119.0,0,1],[31,91.6,0,0],[36,112.7,0,1],[38,125.6,0,1],[44,154.2,1,0],[60,228.9,1,0],[45,158.0,0,0],[45,158.9,1,0],[36,114.7,0,0],[34,103.6,0,0],[36,113.6,1,0],[46,160.5,1,0],[52,192.1,1,0],[29,80.4,0,0],[28,76.5,0,0],[43,148.7,1,0],[35,108.6,0,0],[32,95.9,0,0],[49,177.9,1,0],[57,216.9,1,0],[37,118.9,0,0],[29,80.7,0,0],[40,133.1,0,0],[44,151.7,1,0],[38,125.6,1,0],[37,118.7,1,0],[41,137.3,0,0],[36,115.8,0,0],[34,104.8,0,0],[52,193.7,1,0],[59,226.3,1,0],[43,148.2,1,0],[35,106.8,0,0],[56,210.2,1,0],[37,118.4,1,0],[49,176.0,1,0],[47,169.1,1,0],[33,97.2,0,0],[31,91.3,0,0],[35,110.7,0,0],[33,97.9,0,0],[40,132.9,1,0],[28,76.4,0,0],[23,50.7,0,0],[37,120.8,1,0],[30,86.3,0,0],[43,148.4,1,0],[50,184.6,1,0],[51,188.3,1,0],[39,127.0,1,0],[56,210.0,1,0],[34,104.3,0,0],[70,280.1,1,0],[42,145.3,1,0],[37,119.6,1,0],[33,97.3,0,0],[43,150.3,1,0],[32,95.7,0,0],[58,221.2,1,0],[48,172.4,1,1],[34,106.1,0,0],[58,222.6,1,0],[41,138.4,1,0],[50,182.6,1,0],[43,149.8,1,1],[29,78.3,0,0],[32,96.7,0,0],[51,188.0,1,0],[37,120.9,0,0],[31,89.1,0,0],[51,186.8,1,0],[53,194.7,1,0],[53,196.0,1,0],[49,179.6,1,0],[34,102.3,0,0],[42,142.7,1,0],[51,185.2,1,0],[62,240.7,1,0],[40,131.8,1,1],[33,98.3,0,0],[34,103.7,0,0],[35,108.6,0,0],[26,63.6,0,0],[50,183.8,1,0],[50,182.7,1,0],[33,98.5,0,0],[45,157.5,1,0],[38,125.3,0,0],[34,102.0,0,0],[42,142.9,0,0],[44,154.6,1,0],[40,134.2,0,0],[43,148.0,1,0],[31,90.5,0,0],[39,128.7,0,0],[58,221.1,1,0],[41,138.3,1,0],[62,239.5,1,0],[45,157.6,0,0],[32,93.4,0,0],[42,142.3,1,1],[43,146.1,1,0],[20,37.4,0,0],[47,166.8,1,0],[48,171.5,1,0],[36,111.7,0,0],[48,171.4,1,0],[34,105.2,0,0],[33,97.9,0,0],[51,186.2,1,0],[49,177.3,1,0],[58,221.6,1,0],[50,181.5,1,0],[35,110.1,1,1],[52,194.3,1,0],[39,129.3,1,0],[30,85.3,0,0],[31,89.2,0,0],[38,125.6,0,0],[33,100.0,0,0],[48,174.9,1,0],[48,170.8,1,0],[35,108.4,0,0],[56,212.8,1,0],[53,199.0,1,0],[28,76.8,0,0],[31,87.6,0,0],[32,93.6,0,0],[57,214.3,1,0],[32,96.3,0,0],[53,198.9,1,0],[46,160.8,1,0],[37,120.0,0,0],[31,91.0,0,0],[36,113.0,0,0],[42,140.9,1,0],[40,131.2,0,0],[33,97.3,0,0],[39,129.4,0,0],[42,142.7,0,0],[63,247.9,1,0],[41,140.1,1,0],[40,135.1,0,0],[50,182.7,1,0],[51,188.8,1,0],[34,104.1,0,0],[35,109.5,0,0],[37,116.5,0,0],[38,124.3,1,0],[26,67.1,0,0],[38,122.1,0,0],[53,196.9,1,0],[44,153.7,1,1],[35,111.0,1,0],[58,223.3,1,0],[34,102.0,0,0],[48,173.8,1,0],[49,179.3,1,0],[36,115.1,0,0],[40,131.4,1,0],[39,128.4,0,0],[56,210.9,1,0],[33,100.0,0,0],[48,172.3,1,0],[45,157.5,1,0],[53,198.6,1,0],[49,175.6,1,0],[33,98.9,0,0],[48,172.3,1,0],[50,180.7,1,0],[31,90.0,0,0],[51,189.2,1,0],[30,86.4,0,0],[46,163.1,0,0],[30,86.7,0,0],[53,196.6,1,1],[42,144.6,1,1],[46,164.1,1,0],[46,162.2,0,0],[55,208.5,1,0],[51,186.7,1,0],[30,83.9,0,0],[47,165.3,1,0],[45,159.3,1,0],[56,213.5,1,0],[34,102.4,0,0],[39,129.4,1,0],[28,74.0,0,0],[49,177.7,1,0],[37,118.2,0,0],[38,124.6,0,0],[32,93.5,0,0],[33,101.6,0,1],[41,140.7,0,0],[49,179.4,1,0],[29,79.3,0,0],[46,163.0,1,0],[42,142.2,0,0],[46,161.6,1,0],[40,131.2,0,0],[57,216.2,1,0],[34,106.4,0,0],[32,96.6,0,0],[33,99.0,0,0],[33,97.1,0,0],[26,67.0,0,0],[35,109.2,0,0],[61,234.5,1,0],[34,102.8,0,0],[46,161.3,1,0],[52,192.1,1,0],[40,132.1,0,0],[48,173.7,1,0],[47,165.8,1,0],[42,142.2,0,0],[31,90.7,0,0],[40,134.5,1,0],[42,144.0,1,0],[58,219.2,1,0],[28,76.1,0,0],[38,125.6,0,0],[37,121.2,0,0],[43,147.6,1,0],[51,186.9,1,0],[43,149.5,1,0],[53,198.2,1,0],[25,61.1,0,0],[58,221.5,1,0],[30,87.0,0,0],[47,168.9,1,1],[56,209.5,1,0],[52,193.0,1,0],[45,156.3,1,0],[48,172.6,1,0],[45,157.5,1,0],[29,81.4,0,0],[40,134.9,1,1],[27,69.6,0,0],[48,172.4,1,0],[40,134.9,1,0],[24,56.4,0,0],[49,175.4,1,0],[44,151.6,1,0],[56,214.1,1,0],[46,163.7,0,0],[30,86.7,0,0],[48,174.5,1,0],[43,147.1,0,0],[49,176.5,1,0],[41,138.7,0,0],[28,75.2,0,0],[35,110.6,0,0],[38,123.0,0,0],[55,204.6,1,0],[47,167.3,1,0],[55,208.7,1,0],[43,146.8,0,0],[30,83.5,0,0],[49,178.4,1,0],[35,108.3,0,0],[62,240.3,1,0],[40,134.0,0,0],[44,152.1,0,1],[44,151.0,0,0],[53,198.3,1,0],[34,102.4,0,0],[54,202.8,1,0],[41,140.7,0,0],[20,37.2,0,0],[40,133.1,0,0],[33,99.1,0,0],[41,137.1,1,0],[39,129.3,0,0],[41,139.1,0,0],[30,85.6,0,1],[29,81.3,0,0],[50,181.6,1,0],[34,104.1,1,0],[36,115.2,1,0],[47,165.7,1,1],[37,120.2,0,0],[29,80.5,0,0],[38,125.2,1,0],[28,76.4,0,0],[57,215.9,1,0],[35,108.9,0,0],[42,144.6,1,0],[35,107.4,0,1],[27,71.4,0,0],[45,157.7,1,0],[35,109.1,0,0],[35,110.7,0,0],[36,115.7,0,0],[37,118.9,0,0],[45,156.0,1,0],[40,133.8,1,0],[45,159.5,1,0],[30,85.8,0,0],[48,172.3,1,0],[24,57.7,0,0],[54,202.3,1,0],[43,149.2,1,0],[54,202.2,1,0],[56,209.7,1,0],[40,135.2,1,0],[34,103.9,0,0],[45,159.9,1,1],[35,109.7,0,0],[39,128.0,0,0],[57,215.3,1,0],[37,117.4,1,0],[37,118.6,0,0],[33,99.6,0,0],[45,157.2,1,0],[43,150.5,1,0],[24,57.3,0,0],[38,123.1,0,0],[29,80.3,0,0],[47,167.4,1,0],[44,153.6,0,0],[46,163.1,1,1],[51,186.1,1,0],[32,93.3,0,0],[48,170.2,1,0],[20,36.0,0,0],[33,98.1,0,0],[34,103.9,0,0],[33,97.6,0,0],[40,135.7,1,0],[31,87.4,0,0],[26,66.7,0,0],[39,129.9,0,0],[34,102.0,0,0],[53,199.3,1,0],[37,116.9,0,0],[52,192.9,1,0],[37,121.1,1,0],[51,186.0,1,0],[25,58.4,0,0],[34,104.9,0,0],[37,119.6,0,0],[34,104.2,1,1],[29,81.4,0,0],[60,231.1,1,0],[32,93.3,0,0],[35,108.0,0,0],[41,139.2,1,0],[65,255.6,1,0],[51,187.6,1,0],[53,197.9,1,0],[32,92.5,0,0],[49,178.3,1,0],[36,113.3,0,0],[58,221.2,1,0],[47,168.3,1,0],[53,199.0,1,0],[37,120.9,0,0],[33,101.7,0,0],[23,52.1,0,0],[51,185.2,1,0],[28,76.8,0,0],[25,61.6,0,0],[41,139.8,0,0],[37,118.2,1,0],[36,114.9,0,0],[51,186.0,1,0],[47,169.0,1,0],[42,141.6,1,0],[51,188.2,1,0],[26,64.0,0,0],[34,102.0,0,0],[31,89.1,0,0],[31,89.8,0,0],[47,166.2,1,0],[23,48.3,0,0],[31,88.6,0,0],[32,96.3,0,0],[53,196.3,1,0],[30,85.5,0,0],[31,91.2,0,0],[29,81.2,0,0],[60,230.8,1,0],[50,182.6,1,0],[44,152.3,1,0],[42,142.7,1,0],[46,160.5,1,0],[34,106.5,1,1],[35,107.4,0,0],[55,206.3,1,0],[46,162.7,1,0],[34,102.4,0,0],[43,147.1,0,0],[42,141.5,1,0],[47,167.0,1,1],[32,92.6,0,0],[46,162.7,1,0],[37,120.2,0,0],[39,130.0,1,0],[29,81.8,0,0],[41,138.8,0,0],[43,147.5,0,0],[36,113.1,0,0],[33,98.5,0,0],[35,110.7,0,0],[27,68.8,0,0],[45,155.8,1,0],[33,98.5,0,0],[45,156.0,1,0],[43,150.2,1,0],[42,142.1,0,0],[29,81.4,0,0],[35,110.1,0,0],[33,100.5,0,0],[55,204.6,1,0],[59,224.5,1,0],[24,57.1,0,0],[43,146.3,0,0],[61,234.5,1,0],[37,116.8,0,0],[30,84.7,0,0],[26,63.8,0,0],[49,175.3,1,0],[39,129.0,1,0],[55,207.0,1,0],[42,141.8,0,0],[56,209.9,1,0],[45,160.3,1,1],[46,164.1,1,0],[50,181.4,1,0],[53,194.9,1,0],[34,104.9,0,0],[28,74.0,0,0],[33,97.2,0,0],[52,189.9,1,0],[32,93.0,0,0],[36,114.5,0,0],[37,117.5,1,0],[42,141.1,1,0],[40,131.8,0,0],[34,103.2,0,0],[76,309.4,1,0],[39,126.5,0,0],[53,197.9,1,0],[29,81.9,0,0],[32,96.1,0,0],[49,177.2,1,0],[50,183.0,1,0],[36,114.0,1,1],[56,209.7,1,0],[37,118.7,1,1],[40,132.8,1,0],[30,84.2,0,0],[48,173.5,1,0],[27,72.1,0,0],[54,202.9,1,0],[28,73.5,0,0],[50,181.8,1,0],[44,152.0,1,1],[28,74.0,0,0],[39,129.2,0,0],[28,72.8,0,0],[34,102.7,0,0],[49,178.4,1,0],[42,143.9,1,0],[23,50.7,0,0],[50,181.9,1,0],[50,183.8,1,0],[37,121.1,0,0],[56,210.2,1,0],[39,127.7,0,0],[62,240.4,1,0],[31,90.4,0,0],[35,107.3,0,0],[62,238.9,1,0],[44,150.6,1,0],[34,105.3,0,0],[43,146.2,1,0],[37,118.0,0,0],[46,163.2,0,0],[48,172.9,1,0],[47,169.6,1,0],[40,131.8,1,0],[51,189.5,1,0],[46,160.8,1,0],[43,147.5,1,0],[44,155.2,1,1],[38,123.7,1,0],[29,79.9,0,0],[43,150.5,1,1],[41,137.4,1,0],[44,152.5,1,0],[42,143.8,0,0],[46,161.6,0,0],[34,103.1,0,0],[27,71.3,0,0],[30,86.0,0,0],[52,190.4,1,0],[27,67.9,0,0],[30,86.1,0,0],[51,187.0,1,0],[44,152.4,1,0],[49,178.5,1,0],[44,155.2,1,0],[29,78.2,0,0],[37,119.7,0,0],[41,137.4,0,0],[30,82.7,0,0],[57,219.0,1,0],[30,84.0,0,0],[58,223.6,1,0],[31,89.3,0,0],[34,106.6,0,0],[51,187.7,1,0],[29,80.5,0,0],[36,111.9,0,0],[40,133.9,0,0],[49,178.8,1,0],[42,142.7,0,0],[47,168.7,1,0],[35,109.5,1,1],[28,76.2,0,0],[40,133.0,0,0],[29,80.5,0,0],[48,172.2,1,0],[34,102.9,0,0],[57,215.4,1,0],[53,194.9,1,0],[31,88.8,0,0],[33,100.9,0,0],[57,214.2,1,0],[36,112.7,0,0],[37,118.1,0,0],[27,72.0,0,0],[35,108.8,0,0],[30,86.3,0,0],[52,193.0,1,0],[31,88.9,0,0],[48,172.7,1,0],[50,184.7,1,0],[36,113.1,0,0],[28,75.6,0,0],[43,149.4,1,0],[39,126.8,0,0],[22,44.1,0,0],[43,150.3,1,0],[25,59.3,0,0],[34,102.5,0,0],[30,84.8,0,0],[58,222.0,1,0],[46,163.2,1,0],[49,177.2,1,0],[52,190.3,1,0],[29,79.3,0,0],[39,128.3,0,0],[37,116.8,0,0],[50,183.3,1,0],[41,139.7,0,0],[36,113.4,0,0],[30,85.4,0,0],[37,120.2,0,0],[30,82.9,0,0],[40,131.9,0,0],[28,74.1,0,0],[33,101.0,0,0],[33,100.8,0,0],[22,44.4,0,0],[30,86.6,0,0],[39,126.8,0,0],[51,188.5,1,0],[40,133.3,1,0],[33,98.7,0,0],[21,41.6,0,0],[31,91.8,0,0],[35,107.8,0,0],[34,106.0,0,0],[39,126.6,0,0],[46,165.1,1,0],[48,173.1,1,1],[45,157.1,1,0],[33,98.2,0,0],[39,130.8,1,0],[50,183.7,1,0],[57,214.5,1,0],[53,196.7,1,0],[33,100.0,0,0],[36,114.6,0,0],[48,170.7,1,1],[46,164.9,1,0],[53,198.8,1,0],[31,89.0,0,0],[34,104.7,0,0],[52,194.2,1,0],[46,160.9,1,0],[49,177.7,1,0],[53,198.3,1,0],[43,149.5,1,0],[60,231.5,1,0],[46,160.9,1,0],[35,107.2,0,0],[51,187.2,1,0],[28,73.8,0,0],[37,117.9,1,1],[45,159.9,1,0],[55,207.0,1,0],[43,148.8,1,0],[52,191.3,1,1],[56,212.3,1,0],[49,177.0,1,0],[28,76.6,0,0],[43,147.8,1,0],[40,132.8,1,0],[54,203.6,1,0],[42,145.0,1,0],[44,155.4,1,0],[59,226.8,1,0],[39,128.5,1,0],[46,161.5,1,1],[36,116.4,0,0],[36,116.2,0,0],[43,146.1,1,0],[36,116.1,0,0],[31,90.0,0,0],[49,175.2,1,0],[36,111.6,0,0],[33,100.6,0,0],[46,163.0,1,1],[49,176.2,1,0],[25,61.6,0,0],[30,86.6,0,0],[64,249.9,1,0],[54,200.0,1,0],[26,64.0,0,0],[38,122.3,0,0],[25,60.8,0,0],[43,146.6,1,0],[28,72.7,0,0],[71,286.7,1,0],[42,141.3,1,0],[47,169.7,1,0],[38,121.9,0,0],[27,67.9,0,0],[56,213.9,1,0],[23,51.1,0,0],[45,156.8,0,0],[30,84.6,0,0],[30,86.5,0,0],[44,153.5,0,0],[34,103.3,0,0],[41,140.8,1,0],[24,54.3,0,0],[36,113.0,0,0],[42,144.3,1,0],[40,135.2,0,0],[50,184.5,1,0],[41,138.6,0,0],[30,84.5,0,0],[39,130.6,1,0],[37,116.6,0,0],[33,98.7,0,0],[33,100.6,0,0],[54,203.6,1,0],[37,118.8,0,0],[37,121.3,0,0],[47,167.9,1,0],[63,244.6,1,0],[39,130.3,0,0],[40,133.4,1,0],[53,197.1,1,0],[31,88.5,0,0],[43,149.5,1,0],[55,206.5,1,0],[37,118.3,0,0],[44,151.0,0,0],[36,114.3,0,0],[46,162.3,1,1],[38,124.6,0,0],[48,174.6,0,1],[33,99.3,0,0],[27,68.8,0,0],[51,189.6,1,0],[26,66.6,0,0],[28,77.1,0,0],[35,111.2,0,0],[47,167.9,1,0],[37,116.6,0,0],[37,118.3,0,0],[33,99.3,0,0],[32,94.4,0,0],[35,107.5,0,0],[37,116.4,0,0],[38,121.8,0,0],[44,152.7,0,0],[45,160.1,1,0],[26,65.3,0,0],[38,122.5,0,0],[35,111.5,0,0],[38,123.2,0,0],[51,189.6,1,0],[40,134.0,1,0],[40,135.2,1,0],[32,95.5,0,0],[31,87.6,0,0],[55,204.5,1,0],[47,166.3,0,0],[48,174.4,1,0],[54,201.3,1,0],[35,107.1,0,0],[54,201.0,1,0],[39,129.5,0,0],[40,133.2,1,0],[33,97.2,0,0],[53,198.2,1,0],[31,89.3,0,0],[45,156.8,1,0],[41,136.2,1,0],[34,103.2,0,0],[37,120.0,0,0],[49,176.3,0,1],[48,172.0,1,0],[39,126.5,0,0],[43,147.2,0,0],[31,89.8,0,0],[41,139.7,1,0],[46,160.5,1,0],[33,97.8,0,0],[39,128.9,0,0],[50,181.7,1,0],[57,216.8,1,0],[44,154.4,0,0],[54,200.0,1,0],[39,130.2,0,0],[52,192.6,1,0],[29,80.5,0,0],[33,98.7,0,0],[45,159.0,1,0],[37,116.5,0,0],[32,92.8,0,0],[39,128.1,0,0],[44,152.9,1,0],[25,58.2,0,0],[43,148.8,1,0],[33,96.9,0,0],[44,152.5,1,0],[52,192.3,1,0],[28,72.7,0,0],[47,169.6,1,0],[29,77.7,0,0],[28,77.1,0,0],[57,217.2,1,0],[31,88.6,0,0],[50,181.5,1,0],[31,88.2,0,0],[34,104.4,0,0],[51,186.5,1,0],[46,162.6,1,0],[33,100.6,0,0],[52,189.9,1,0],[55,205.1,1,0],[35,110.2,0,0],[35,106.8,0,1],[30,84.8,0,0],[34,106.6,0,0],[27,69.3,0,0],[28,73.8,0,0],[26,66.1,0,0],[35,107.8,0,0],[59,223.9,1,0],[49,176.8,1,0],[56,212.9,1,0],[43,148.7,0,0],[45,159.8,1,0],[50,184.2,1,0],[34,103.9,0,0],[25,58.1,0,0],[49,177.1,1,0],[57,218.5,1,0],[33,98.5,0,0],[61,234.4,1,0],[41,136.5,0,0],[47,166.5,1,0],[51,186.2,1,0],[51,189.0,1,0],[33,101.0,0,0],[36,114.7,0,0],[43,150.1,1,0],[34,106.2,0,0],[53,197.8,1,0],[41,140.5,1,0],[35,110.7,0,0],[32,93.2,0,0],[46,160.5,1,0],[23,50.2,0,0],[63,247.4,1,0],[28,76.1,0,0],[42,141.7,1,1],[33,97.6,0,0],[65,255.2,1,0],[52,193.7,1,0],[41,137.1,1,0],[52,193.1,1,0],[53,196.2,1,0],[52,193.1,1,1],[44,151.3,1,0],[44,150.9,0,0],[34,106.4,0,0],[44,152.8,0,0],[55,207.8,1,0],[31,88.1,0,0],[37,116.5,0,0],[49,175.2,1,0],[29,79.3,0,0],[31,89.7,0,0],[48,171.2,1,0],[42,145.7,1,0],[52,192.2,1,0],[36,113.5,0,0],[29,80.0,0,0],[64,248.8,1,0],[29,80.1,0,0],[41,140.4,1,0],[39,128.0,0,0],[30,83.0,0,0],[28,74.8,0,0],[49,175.6,1,0],[36,113.6,0,0],[33,101.1,0,0],[48,170.3,1,0],[36,113.5,0,0],[29,80.6,0,0],[27,69.4,0,0],[41,139.8,0,0],[34,103.3,0,0],[26,66.5,0,0],[44,155.2,0,0],[57,216.1,1,0],[45,159.3,1,1],[35,110.4,0,0],[31,87.9,0,0],[57,217.3,1,0],[44,155.4,1,0],[37,119.8,0,0],[31,90.6,0,0],[30,84.4,0,0],[31,90.0,0,0],[43,147.7,1,0],[44,155.0,0,0],[33,97.3,0,0],[36,112.4,0,0],[46,161.5,1,0],[42,141.2,1,0],[31,87.5,0,0],[33,98.5,0,0],[41,136.1,1,0],[39,128.3,0,0],[33,99.4,0,0],[23,48.6,0,0],[60,230.9,1,0],[40,135.7,1,1],[39,129.2,0,0],[53,197.4,1,0],[38,122.8,0,0],[45,155.5,1,0],[37,118.3,0,0],[53,196.0,1,0],[54,201.0,1,0],[56,211.2,1,0],[42,142.7,1,1],[35,106.8,0,0],[33,97.1,0,0],[60,229.2,1,0],[37,117.3,0,0],[47,168.6,0,1],[37,120.8,0,1],[43,149.4,1,0],[23,52.7,0,0],[32,94.5,0,0],[34,102.9,0,0],[51,186.3,1,0],[59,228.5,1,0],[46,164.5,0,0],[37,120.3,0,0],[51,188.6,1,0],[21,43.1,0,0],[35,110.8,0,0],[33,97.5,0,0],[30,85.9,0,0],[50,180.0,1,0],[28,77.0,0,0],[34,102.4,1,1],[27,70.7,0,0],[41,136.7,0,0],[49,175.3,0,1],[49,178.7,1,0],[40,132.9,0,0],[36,111.7,0,0],[43,146.0,1,1],[57,214.6,1,0],[28,77.0,0,1],[46,162.5,1,0],[30,82.8,0,0],[55,205.4,1,0],[39,127.4,0,0],[43,146.8,1,0],[30,86.2,0,0],[48,170.8,1,0],[26,67.2,0,0],[45,160.3,1,0],[47,167.9,1,0],[40,131.9,0,0],[47,168.2,1,0],[47,167.8,1,0],[29,78.1,0,0],[43,149.9,1,0],[37,120.5,0,0],[35,108.6,0,0],[47,170.1,1,1],[22,45.8,0,0],[55,206.9,1,0],[37,119.3,1,1],[36,114.7,0,0],[36,114.2,0,0],[43,149.9,1,1],[48,172.1,1,0],[35,109.0,0,0],[33,97.7,0,0],[47,169.0,1,0],[41,139.5,0,0],[26,67.0,0,0],[60,230.1,1,0],[39,128.6,1,0],[35,108.9,0,0],[36,113.7,0,0],[60,233.4,1,0],[41,138.6,1,0],[22,47.9,0,0],[50,180.0,1,0],[36,112.6,1,1],[50,181.5,1,0],[37,117.2,0,0],[28,74.6,0,0],[33,97.2,0,0],[45,156.3,1,0],[46,163.3,1,0],[32,96.4,0,0],[35,107.8,0,0],[52,191.0,1,0],[50,181.3,1,0],[30,82.9,0,0],[32,93.9,0,0],[38,123.1,0,0],[43,150.0,1,0],[53,197.5,1,0],[38,124.3,0,0],[22,45.7,0,0],[41,140.7,1,0],[31,90.3,0,0],[34,106.5,0,0],[31,89.3,0,0],[28,76.8,0,0],[33,99.9,0,0],[42,143.4,1,0],[42,144.5,1,0],[30,87.1,0,0],[34,104.5,1,1]]};
+
+/* ── Theme toggle (persists the choice) ── */
+(function () {
+  var btn = document.getElementById('themeToggle');
+  var root = document.documentElement;
+  var moon = document.getElementById('icon-moon');
+  var sun = document.getElementById('icon-sun');
+  function paint(v) {
+    root.setAttribute('data-theme', v);
+    var dark = v === 'dark';
+    moon.style.display = dark ? 'none' : '';
+    sun.style.display = dark ? '' : 'none';
+    btn.setAttribute('aria-label', dark ? 'Switch to light mode' : 'Switch to dark mode');
+  }
+  paint(root.getAttribute('data-theme') === 'dark' ? 'dark' : 'light');
+  btn.addEventListener('click', function () {
+    var v = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+    paint(v);
+    try { localStorage.setItem('rt-theme', v); } catch (e) {}
+  });
+})();
+
+/* ── Scroll reveal ── */
+(function () {
+  if (!('IntersectionObserver' in window)) { document.documentElement.classList.add('no-io'); return; }
+  var obs = new IntersectionObserver(function (entries) {
+    entries.forEach(function (e) { if (e.isIntersecting) { e.target.classList.add('visible'); obs.unobserve(e.target); } });
+  }, { threshold: 0.06 });
+  document.querySelectorAll('.reveal').forEach(function (el) { obs.observe(el); });
+})();
+
+/* ── Active nav link ── */
+(function () {
+  var links = Array.prototype.slice.call(document.querySelectorAll('.nav-links a'));
+  var map = {};
+  var sections = Array.prototype.slice.call(document.querySelectorAll('main section[id]'));
+  function onScroll() {
+    var cur = '';
+    sections.forEach(function (s) { if (window.scrollY >= s.offsetTop - 90) cur = s.id; });
+    cur = map[cur] || cur;
+    links.forEach(function (a) { a.classList.toggle('active', a.getAttribute('href') === '#' + cur); });
+  }
+  window.addEventListener('scroll', onScroll, { passive: true });
+  onScroll();
+})();
+
+/* ── Stakeholder tabs (arrow keys move between tabs) ── */
+(function () {
+  var tabs = Array.prototype.slice.call(document.querySelectorAll('.tab-btn'));
+  function select(tab, focus) {
+    tabs.forEach(function (t) {
+      var on = t === tab;
+      t.setAttribute('aria-selected', on ? 'true' : 'false');
+      t.setAttribute('tabindex', on ? '0' : '-1');
+      var p = document.getElementById(t.getAttribute('aria-controls'));
+      if (p) { p.hidden = !on; if (on) p.classList.add('visible'); }
+    });
+    if (focus) tab.focus();
+  }
+  tabs.forEach(function (t, i) {
+    t.addEventListener('click', function () { select(t, false); });
+    t.addEventListener('keydown', function (e) {
+      var k = e.key, j = null;
+      if (k === 'ArrowRight') j = (i + 1) % tabs.length;
+      if (k === 'ArrowLeft') j = (i - 1 + tabs.length) % tabs.length;
+      if (k === 'Home') j = 0;
+      if (k === 'End') j = tabs.length - 1;
+      if (j !== null) { e.preventDefault(); select(tabs[j], true); }
+    });
+  });
+})();
+
+/* ════════════════════════════════════════════════════════════════════════
+   CHARTS — small SVG renderer. Colours come from CSS roles (vz-ink / vz-ctx),
+   so the light/dark toggle restyles every chart without a redraw.
+   ════════════════════════════════════════════════════════════════════════ */
+(function () {
+  if (!DATA) return;
+  var NS = 'http://www.w3.org/2000/svg';
+  var MINUS = '−';
+
+  function pct(v, d) { d = d || 0; var s = Math.abs(v * 100).toFixed(d); if (Number(s) === 0) return '0%'; return (v > 0 ? '+' : MINUS) + s + '%'; }
+  function share(v, d) { return (v * 100).toFixed(d || 0) + '%'; }
+  function usd(v, d) { return '$' + Number(v).toLocaleString('en-AU', { minimumFractionDigits: d || 0, maximumFractionDigits: d || 0 }); }
+
+  function svgEl(tag, attrs, parent) {
+    var e = document.createElementNS(NS, tag);
+    for (var k in attrs) if (attrs[k] !== undefined && attrs[k] !== null) e.setAttribute(k, attrs[k]);
+    if (parent) parent.appendChild(e);
+    return e;
+  }
+  function text(parent, x, y, s, cls, anchor) {
+    var t = svgEl('text', { x: x, y: y, 'class': cls || 'vz-t', 'text-anchor': anchor || 'start' }, parent);
+    t.textContent = s;
+    return t;
+  }
+  function line(parent, x1, y1, x2, y2, cls) { return svgEl('line', { x1: x1, y1: y1, x2: x2, y2: y2, 'class': cls }, parent); }
+  function scale(d0, d1, r0, r1) { return function (v) { return r0 + (v - d0) / (d1 - d0) * (r1 - r0); }; }
+  function newSvg(host, w, h, label) {
+    host.replaceChildren();
+    var s = svgEl('svg', { viewBox: '0 0 ' + w + ' ' + h, width: w, height: h, role: 'img', 'aria-label': label }, host);
+    return s;
+  }
+  // 4px rounded data-end, square at the baseline
+  function hbar(x0, x1, y, h) {
+    var w = Math.abs(x1 - x0), r = Math.min(4, h / 2, w);
+    if (w < 0.5) return 'M' + x0 + ',' + y + 'h0.5v' + h + 'h-0.5Z';
+    if (x1 >= x0) return 'M' + x0 + ',' + y + 'H' + (x1 - r) + 'Q' + x1 + ',' + y + ' ' + x1 + ',' + (y + r) + 'V' + (y + h - r) + 'Q' + x1 + ',' + (y + h) + ' ' + (x1 - r) + ',' + (y + h) + 'H' + x0 + 'Z';
+    return 'M' + x0 + ',' + y + 'H' + (x1 + r) + 'Q' + x1 + ',' + y + ' ' + x1 + ',' + (y + r) + 'V' + (y + h - r) + 'Q' + x1 + ',' + (y + h) + ' ' + (x1 + r) + ',' + (y + h) + 'H' + x0 + 'Z';
+  }
+  function vbar(x, w, y0, y1) {
+    var h = Math.abs(y1 - y0), r = Math.min(4, w / 2, h);
+    if (h < 0.5) return 'M' + x + ',' + y0 + 'h' + w + 'v0.5h-' + w + 'Z';
+    if (y1 <= y0) return 'M' + x + ',' + y0 + 'V' + (y1 + r) + 'Q' + x + ',' + y1 + ' ' + (x + r) + ',' + y1 + 'H' + (x + w - r) + 'Q' + (x + w) + ',' + y1 + ' ' + (x + w) + ',' + (y1 + r) + 'V' + y0 + 'Z';
+    return 'M' + x + ',' + y0 + 'V' + (y1 - r) + 'Q' + x + ',' + y1 + ' ' + (x + r) + ',' + y1 + 'H' + (x + w - r) + 'Q' + (x + w) + ',' + y1 + ' ' + (x + w) + ',' + (y1 - r) + 'V' + y0 + 'Z';
+  }
+  // whole bar with every corner rounded (segmented-bar blocks)
+  function block(x, y, w, h) {
+    var r = Math.min(4, w / 2, h / 2);
+    return 'M' + (x + r) + ',' + y + 'H' + (x + w - r) + 'Q' + (x + w) + ',' + y + ' ' + (x + w) + ',' + (y + r) + 'V' + (y + h - r) + 'Q' + (x + w) + ',' + (y + h) + ' ' + (x + w - r) + ',' + (y + h) + 'H' + (x + r) + 'Q' + x + ',' + (y + h) + ' ' + x + ',' + (y + h - r) + 'V' + (y + r) + 'Q' + x + ',' + y + ' ' + (x + r) + ',' + y + 'Z';
+  }
+
+  /* tooltip: value first, label second; text only via textContent */
+  var tip = document.createElement('div');
+  tip.className = 'vz-tip';
+  tip.setAttribute('aria-hidden', 'true');
+  document.body.appendChild(tip);
+  function fill(lines) {
+    tip.replaceChildren();
+    lines.forEach(function (l, i) { var d = document.createElement('div'); d.className = i === 0 ? 'vz-tip-v' : 'vz-tip-l'; d.textContent = l; tip.appendChild(d); });
+    tip.style.opacity = '1';
+  }
+  function place(x, y) {
+    var r = tip.getBoundingClientRect(), pad = 12;
+    var nx = x + 14, ny = y - r.height - 12;
+    if (nx + r.width > window.innerWidth - pad) nx = x - r.width - 14;
+    if (ny < pad) ny = y + 18;
+    tip.style.transform = 'translate(' + Math.max(pad, nx) + 'px,' + ny + 'px)';
+  }
+  function hide() { tip.style.opacity = '0'; }
+  function bind(node, lines) {
+    node.setAttribute('tabindex', '0');
+    node.setAttribute('role', 'img');
+    node.setAttribute('aria-label', lines.join(', '));
+    node.addEventListener('pointerenter', function (e) { fill(lines); place(e.clientX, e.clientY); });
+    node.addEventListener('pointermove', function (e) { place(e.clientX, e.clientY); });
+    node.addEventListener('pointerleave', hide);
+    node.addEventListener('focus', function () { fill(lines); var b = node.getBoundingClientRect(); place(b.left + b.width / 2, b.top); });
+    node.addEventListener('blur', hide);
+  }
+  window.addEventListener('scroll', hide, { passive: true });
+
+  /* table twin for every chart */
+  function table(fig, head, rows, numericCols) {
+    var wrap = fig.querySelector('.viz-table-wrap');
+    if (!wrap || wrap.dataset.built) return;
+    var t = document.createElement('table'); t.className = 'viz-table';
+    var tr = document.createElement('tr');
+    head.forEach(function (h, i) { var th = document.createElement('th'); th.scope = 'col'; th.textContent = h; if (numericCols.indexOf(i) > -1) th.className = 'num'; tr.appendChild(th); });
+    var thead = document.createElement('thead'); thead.appendChild(tr); t.appendChild(thead);
+    var tb = document.createElement('tbody');
+    rows.forEach(function (r) {
+      var row = document.createElement('tr');
+      r.forEach(function (c, i) { var td = document.createElement('td'); td.textContent = c; if (numericCols.indexOf(i) > -1) td.className = 'num'; row.appendChild(td); });
+      tb.appendChild(row);
+    });
+    t.appendChild(tb); wrap.appendChild(t); wrap.dataset.built = '1';
+  }
+
+
+  /* ── page helpers: DATA shares are already percentages ── */
+  function N(v) { return Number(v).toLocaleString('en-AU'); }
+  function p1(v) { if (v >= 99.995) return '100%'; return (Math.round((v + 1e-9) * 10) / 10).toFixed(1) + '%'; }
+  function p0(v) { return Math.round(v + 1e-9) + '%'; }
+  function dec(v, d) { var r = Math.round(v * 100) / 100; if (Math.abs(r) < 1e-9) return '0'; return (r < 0 ? MINUS : '') + Math.abs(r).toFixed(d === undefined ? 2 : d); }
+  var FIELD = { 'Gender': 'Gender', 'Marital Status': 'Marital status', 'Age': 'Age', 'Education': 'Education', 'Income': 'Income', 'Occupation': 'Job type', 'Settlement Size': 'City size' };
+  var CAT = { 'Other / unknown': 'Other or unknown', 'Unemployed / unskilled': 'Unemployed or unskilled', 'Skilled employee / official': 'Skilled employee', 'Management / self-employed': 'Management' };
+
+  /* ── 1. Who the members are (share bars, grouped by field) ── */
+  function mix(fig, host) {
+    var W = host.clientWidth, narrow = W < 460;
+    var L = narrow ? 132 : 168, R = 50, rowH = 21, barH = 11, headH = 22, gapH = 12, top = 2;
+    var fields = Object.keys(DATA.eda), n = 0;
+    fields.forEach(function (f) { n += DATA.eda[f].length; });
+    var H = top + fields.length * headH + (fields.length - 1) * gapH + n * rowH + 2;
+    var s = newSvg(host, W, H, 'Share of all 2,000 members in each category of gender, marital status, education, job type and city size');
+    var x = scale(0, 70, L, W - R), y = top;
+    fields.forEach(function (f) {
+      text(s, 0, y + 14, FIELD[f], 'vz-t vz-t-head');
+      y += headH;
+      var y0 = y;
+      DATA.eda[f].forEach(function (c) {
+        var by = y + (rowH - barH) / 2, label = CAT[c.k] || c.k;
+        text(s, L - 10, by + barH - 1.5, label, 'vz-t', 'end');
+        var g = svgEl('g', { 'class': 'vz-mark' }, s);
+        svgEl('rect', { x: L, y: y, width: Math.max(1, x(c.share) - L + 44), height: rowH, 'class': 'vz-hit' }, g);
+        svgEl('path', { d: hbar(L, x(c.share), by, barH), 'class': 'vz-ink' }, g);
+        bind(g, [p1(c.share), FIELD[f] + ' · ' + label + ' · ' + N(c.n) + ' members']);
+        text(s, x(c.share) + 6, by + barH - 1.5, p1(c.share), 'vz-t vz-t-val');
+        y += rowH;
+      });
+      line(s, L, y0, L, y, 'vz-axis');
+      y += gapH;
+    });
+    var rows = [];
+    fields.forEach(function (f) { DATA.eda[f].forEach(function (c) { rows.push([FIELD[f], CAT[c.k] || c.k, N(c.n), p1(c.share)]); }); });
+    table(fig, ['Field', 'Category', 'Members', 'Share'], rows, [2, 3]);
+  }
+
+  /* ── 2. Rank correlations (heatmap, darker = stronger) ── */
+  var TINY = { 'Gender': 'Gen', 'Marital Status': 'Mar', 'Age': 'Age', 'Education': 'Edu', 'Income': 'Inc', 'Occupation': 'Job', 'Settlement Size': 'City' };
+  function corr(fig, host) {
+    var f = DATA.spearman.fields, r = DATA.spearman.r, k = f.length, W = host.clientWidth, narrow = W < 640;
+    var L = narrow ? 92 : 118, top = 24, cw = (W - L) / k, ch = narrow ? 34 : 40, H = top + k * ch;
+    var s = newSvg(host, W, H, 'Spearman rank correlation between each pair of the seven fields');
+    f.forEach(function (c, j) { text(s, L + cw * j + cw / 2, 14, narrow ? TINY[c] : FIELD[c], 'vz-t vz-t-strong' + (narrow ? ' vz-sm' : ''), 'middle'); });
+    f.forEach(function (a, i) {
+      text(s, L - 10, top + i * ch + ch / 2 + 4, FIELD[a], 'vz-t vz-t-strong', 'end');
+      f.forEach(function (b, j) {
+        var v = r[i][j], g = svgEl('g', { 'class': 'vz-mark' }, s);
+        svgEl('rect', { x: L + j * cw + 1, y: top + i * ch + 1, width: Math.max(1, cw - 2), height: ch - 2, rx: 2, 'class': 'vz-ink', 'fill-opacity': Math.max(0.06, Math.abs(v)).toFixed(3) }, g);
+        text(s, L + j * cw + cw / 2, top + i * ch + ch / 2 + 4, !narrow && i !== j && Math.abs(v) >= 0.995 ? v.toFixed(3) : v.toFixed(2), (Math.abs(v) >= 0.6 ? 'vz-in-ink' : 'vz-in-ctx') + (narrow ? ' vz-sm' : ''), 'middle');
+        bind(g, [v.toFixed(3), FIELD[a] + ' × ' + FIELD[b]]);
+      });
+    });
+    table(fig, ['Field'].concat(f.map(function (c) { return FIELD[c]; })), f.map(function (a, i) {
+      return [FIELD[a]].concat(r[i].map(function (v) { return v.toFixed(3); }));
+    }), [1, 2, 3, 4, 5, 6, 7]);
+  }
+
+  /* ── 3. Income against age, every member (two panels, one segment picked out in each) ── */
+  function scatter(fig, host) {
+    var P = DATA.points, fit = DATA.income_age, W = host.clientWidth, stacked = W < 520;
+    var gap = 30, pw = stacked ? W : (W - gap) / 2, L = 48, R = 6, top = 24, ph = stacked ? 210 : 270, axisH = 34;
+    var blockH = top + ph + axisH, H = stacked ? 2 * blockH + 14 : blockH;
+    var s = newSvg(host, W, H, 'Income against age for all 2,000 members: almost a straight line, with Starters at the younger end and Established members at the older end');
+    var bands = [];
+    for (var lo = 20; lo <= 75; lo += 5) bands.push({ lo: lo, hi: lo + 4, n: 0, est: 0, inc: [] });
+    P.forEach(function (p) { var o = bands[Math.floor((p[0] - 20) / 5)]; o.n++; o.est += p[2]; o.inc.push(p[1]); });
+    bands = bands.filter(function (o) { return o.n > 0; });
+    bands.forEach(function (o) {
+      o.inc.sort(function (a, b) { return a - b; });
+      var m = o.inc.length;
+      o.med = m % 2 ? o.inc[(m - 1) / 2] : (o.inc[m / 2 - 1] + o.inc[m / 2]) / 2;
+    });
+    [['Starters', 0], ['Established', 1]].forEach(function (seg, k) {
+      var ox = stacked ? 0 : k * (pw + gap), oy = stacked ? k * (blockH + 14) : 0;
+      var x = scale(18, 78, ox + L, ox + pw - R), y = scale(0, 320, oy + top + ph, oy + top);
+      text(s, ox, oy + 12, seg[0] + ' · ' + N(DATA.segments[seg[0]].n), 'vz-t vz-t-head');
+      // five-year bands carry the hover, drawn first so the dots sit on top
+      bands.forEach(function (o) {
+        var mine = seg[1] ? o.est : o.n - o.est;
+        var g = svgEl('g', { 'class': 'vz-mark vz-band' }, s);
+        svgEl('rect', { x: x(o.lo - 0.5), y: oy + top, width: x(o.hi + 0.5) - x(o.lo - 0.5), height: ph, 'class': 'vz-hit' }, g);
+        bind(g, [N(mine) + ' ' + seg[0] + ' aged ' + o.lo + '–' + o.hi, 'of ' + N(o.n) + (o.n === 1 ? ' member' : ' members') + ' that age · median income $' + Math.round(o.med) + 'K']);
+      });
+      [0, 100, 200, 300].forEach(function (t) {
+        line(s, ox + L, y(t), ox + pw - R, y(t), 'vz-grid');
+        text(s, ox + L - 8, y(t) + 4, t ? '$' + t + 'K' : '$0', 'vz-t vz-t-muted', 'end');
+      });
+      [20, 30, 40, 50, 60, 70].forEach(function (t, i) { if (pw > 300 || i % 2 === 0) text(s, x(t), oy + top + ph + 18, String(t), 'vz-t vz-t-muted', 'middle'); });
+      text(s, ox + pw - R, oy + top + ph + 33, 'Age →', 'vz-t vz-t-muted', 'end');
+      line(s, ox + L, oy + top + ph, ox + pw - R, oy + top + ph, 'vz-axis');
+      line(s, x(20), y((fit.intercept + fit.slope * 20) / 1000), x(76), y((fit.intercept + fit.slope * 76) / 1000), 'vz-fit');
+      [0, 1].forEach(function (pass) {   // the other segment first, this segment on top
+        P.forEach(function (p) {
+          var isMine = p[2] === seg[1];
+          if (isMine !== (pass === 1)) return;
+          svgEl('circle', { cx: x(p[0]).toFixed(1), cy: y(p[1]).toFixed(1), r: 2.2, 'class': (isMine ? 'vz-ink' : 'vz-ctx') + ' vz-dot' }, s);
+        });
+      });
+    });
+    table(fig, ['Ages', 'Members', 'Starters', 'Established', 'Median income'], bands.map(function (o) {
+      return [o.lo + '–' + o.hi, N(o.n), N(o.n - o.est), N(o.est), '$' + Math.round(o.med) + 'K'];
+    }), [1, 2, 3, 4]);
+  }
+
+  /* ── 4. How many segments: inertia (line) and silhouette (columns) ── */
+  function elbow(fig, host) {
+    var E = DATA.elbow, S = DATA.silhouette, W = host.clientWidth, stacked = W < 640;
+    var gap = 44, pw = stacked ? W : (W - gap) / 2, ph = 190, top = 28, axisH = 36, block2 = top + ph + axisH;
+    var H = stacked ? 2 * block2 + 18 : block2;
+    var s = newSvg(host, W, H, 'Inertia falls steeply from one segment to two, and silhouette is highest at two segments');
+    // inertia
+    var L = 46, x = scale(1, 10, L + 10, pw - 10), y = scale(0, 9000, top + ph, top);
+    text(s, 0, 12, 'Inertia: spread within segments', 'vz-t vz-t-head');
+    [0, 3000, 6000, 9000].forEach(function (t) { line(s, L, y(t), pw, y(t), 'vz-grid'); text(s, L - 8, y(t) + 4, N(t), 'vz-t vz-t-muted', 'end'); });
+    E.forEach(function (e) { text(s, x(e.k), top + ph + 18, String(e.k), 'vz-t vz-t-muted', 'middle'); });
+    text(s, pw, top + ph + 34, 'Segments (k) →', 'vz-t vz-t-muted', 'end');
+    svgEl('path', { d: 'M' + E.map(function (e) { return x(e.k).toFixed(1) + ',' + y(e.inertia).toFixed(1); }).join('L'), 'class': 'vz-line-ctx' }, s);
+    E.forEach(function (e) {
+      var g = svgEl('g', { 'class': 'vz-mark' }, s), hl = e.k === 2;
+      svgEl('circle', { cx: x(e.k), cy: y(e.inertia), r: 12, 'class': 'vz-hit' }, g);
+      svgEl('circle', { cx: x(e.k), cy: y(e.inertia), r: hl ? 6 : 4.5, 'class': (hl ? 'vz-ink' : 'vz-ctx') + ' vz-ring' }, g);
+      bind(g, [N(Math.round(e.inertia)), 'Inertia with ' + e.k + (e.k === 1 ? ' segment' : ' segments')]);
+    });
+    text(s, x(2) + 12, y(E[1].inertia) - 10, 'k = 2: ' + N(Math.round(E[1].inertia)), 'vz-t vz-t-val');
+    // silhouette
+    var ox = stacked ? 0 : pw + gap, oy = stacked ? block2 + 18 : 0, L2 = 38;
+    var xs0 = ox + L2, xs1 = ox + pw, slot = (xs1 - xs0) / S.length, bw = Math.min(30, slot * 0.6);
+    var y2 = scale(0, 0.6, oy + top + ph, oy + top);
+    text(s, ox, oy + 12, 'Silhouette: how well members fit', 'vz-t vz-t-head');
+    [0, 0.2, 0.4, 0.6].forEach(function (t) { line(s, xs0, y2(t), xs1, y2(t), 'vz-grid'); text(s, xs0 - 8, y2(t) + 4, t.toFixed(1), 'vz-t vz-t-muted', 'end'); });
+    S.forEach(function (d, i) {
+      var cx = xs0 + slot * i + slot / 2, hl = d.k === 2;
+      var g = svgEl('g', { 'class': 'vz-mark' }, s);
+      svgEl('rect', { x: cx - slot / 2, y: oy + top, width: slot, height: ph, 'class': 'vz-hit' }, g);
+      svgEl('path', { d: vbar(cx - bw / 2, bw, y2(0), y2(d.score)), 'class': hl ? 'vz-ink' : 'vz-ctx' }, g);
+      bind(g, [d.score.toFixed(3), 'Silhouette with ' + d.k + ' segments']);
+      if (hl || slot >= 40) text(s, cx, y2(d.score) - 7, d.score.toFixed(3), hl ? 'vz-t vz-t-val' : 'vz-t vz-t-muted', 'middle');
+      text(s, cx, oy + top + ph + 18, String(d.k), 'vz-t vz-t-muted', 'middle');
+    });
+    line(s, xs0, y2(0), xs1, y2(0), 'vz-axis');
+    text(s, xs1, oy + top + ph + 34, 'Segments (k) →', 'vz-t vz-t-muted', 'end');
+    table(fig, ['Segments (k)', 'Inertia', 'Silhouette'], E.map(function (e) {
+      var m = S.filter(function (d) { return d.k === e.k; })[0];
+      return [String(e.k), N(Math.round(e.inertia)), m ? m.score.toFixed(3) : '—'];
+    }), [0, 1, 2]);
+  }
+
+  /* ── 5. Agreement across methods (dot plot, axis from 85%) ── */
+  var AG = { 'K-means++, 30 random starts': '30 random starts', 'Agglomerative, Ward linkage': 'Ward linkage', 'Agglomerative, average linkage': 'Average linkage', 'Agglomerative, complete linkage': 'Complete linkage', 'All seven fields standardised': 'All fields standardised', 'Without income': 'Without income', 'Without gender and marital status': 'No gender or marital', 'Gower distance, average linkage': 'Gower distance' };
+  function agree(fig, host) {
+    var rows = DATA.agreement, W = host.clientWidth, narrow = W < 540;
+    var L = narrow ? 142 : 226, R = 58, rowH = 34, top = 2, axisH = 24, H = top + rows.length * rowH + axisH;
+    var s = newSvg(host, W, H, 'Share of members each check puts in the same segment as k-means++ on the brief’s seven fields');
+    var x = scale(85, 100, L, W - R);
+    [85, 90, 95, 100].forEach(function (t) { line(s, x(t), top, x(t), top + rows.length * rowH, 'vz-grid'); text(s, x(t), H - 6, t + '%', 'vz-t vz-t-muted', 'middle'); });
+    rows.forEach(function (r, i) {
+      var cy = top + i * rowH + rowH / 2, hi = r.same >= 97;
+      line(s, L, cy, W - R, cy, 'vz-row');
+      text(s, L - 12, cy + 4, narrow ? AG[r.k] : r.k, 'vz-t vz-t-strong', 'end');
+      var g = svgEl('g', { 'class': 'vz-mark' }, s);
+      svgEl('circle', { cx: x(r.same), cy: cy, r: 12, 'class': 'vz-hit' }, g);
+      svgEl('circle', { cx: x(r.same), cy: cy, r: 6, 'class': (hi ? 'vz-ink' : 'vz-ctx') + ' vz-ring' }, g);
+      bind(g, [p1(r.same) + ' in the same segment', r.k + ' · adjusted Rand ' + r.ari.toFixed(3)]);
+      text(s, W, cy + 4, p1(r.same), hi ? 'vz-t vz-t-val' : 'vz-t vz-t-muted', 'end');
+    });
+    line(s, L, top, L, top + rows.length * rowH, 'vz-axis');
+    table(fig, ['Check', 'Same segment', 'Adjusted Rand index', 'Silhouette'], rows.map(function (r) {
+      return [r.k, p1(r.same), r.ari.toFixed(3), r.silhouette === null ? '—' : r.silhouette.toFixed(3)];
+    }), [1, 2, 3]);
+  }
+
+  /* ── 6. The two profiles side by side (paired bars) ── */
+  function profile(fig, host) {
+    var A = DATA.segments.Starters, B = DATA.segments.Established;
+    function uni(g) { return g.education['University'] + g.education['Graduate school']; }
+    function job(g) { return g.occupation['Skilled employee / official'] + g.occupation['Management / self-employed']; }
+    var rows = [
+      { k: 'Female', a: A.female, b: B.female },
+      { k: 'Non-single', a: A.non_single, b: B.non_single },
+      { k: 'University or graduate school', s: 'University+', a: uni(A), b: uni(B) },
+      { k: 'Skilled or management job', s: 'Skilled job+', a: job(A), b: job(B) },
+      { k: 'Lives in a big city', s: 'Big city', a: A.city['Big city'], b: B.city['Big city'] },
+      { k: 'Aged 50 or over', s: 'Aged 50+', a: 100 * A.over_50 / A.n, b: 100 * B.over_50 / B.n }
+    ];
+    var W = host.clientWidth, narrow = W < 520;
+    var L = narrow ? 96 : 196, R = 44, barH = 11, pair = 2, rowH = 44, top = 2, axisH = 24;
+    var H = top + rows.length * rowH + axisH;
+    var s = newSvg(host, W, H, 'Share of Starters and of Established members with each attribute');
+    var x = scale(0, 100, L, W - R);
+    [0, 25, 50, 75, 100].forEach(function (t) { line(s, x(t), top, x(t), top + rows.length * rowH, 'vz-grid'); text(s, x(t), H - 5, t + '%', 'vz-t vz-t-muted', 'middle'); });
+    rows.forEach(function (r, i) {
+      var y0 = top + i * rowH, yA = y0 + (rowH - 2 * barH - pair) / 2, yB = yA + barH + pair;
+      text(s, L - 10, y0 + rowH / 2 + 4, narrow ? (r.s || r.k) : r.k, 'vz-t vz-t-strong', 'end');
+      [[r.a, yA, 'vz-ctx', 'Starters', A.n], [r.b, yB, 'vz-ink', 'Established members', B.n]].forEach(function (b) {
+        var g = svgEl('g', { 'class': 'vz-mark' }, s);
+        svgEl('rect', { x: L, y: b[1] - 1, width: Math.max(1, x(b[0]) - L + 36), height: barH + 2, 'class': 'vz-hit' }, g);
+        svgEl('path', { d: hbar(L, x(b[0]), b[1], barH), 'class': b[2] }, g);
+        bind(g, [p1(b[0]) + ' of ' + b[3], r.k + ' · about ' + N(Math.round(b[0] * b[4] / 100)) + ' of ' + N(b[4])]);
+        text(s, x(b[0]) + 6, b[1] + barH - 1.5, p0(b[0]), b[2] === 'vz-ink' ? 'vz-t vz-t-val' : 'vz-t vz-t-muted');
+      });
+    });
+    line(s, L, top, L, top + rows.length * rowH, 'vz-axis');
+    table(fig, ['Attribute', 'Starters (1,024)', 'Established (976)'], rows.map(function (r) { return [r.k, p1(r.a), p1(r.b)]; }), [1, 2]);
+  }
+
+  /* ── 7. Members by city size and segment (stacked counts) ── */
+  function city(fig, host) {
+    var rows = DATA.city, W = host.clientWidth, narrow = W < 480;
+    var L = narrow ? 96 : 124, R = 10, barH = 26, rowH = 58, top = 2, axisH = 24, gap = 2;
+    var H = top + rows.length * rowH + axisH;
+    var s = newSvg(host, W, H, 'Members by city size and segment: big-city members are all Established, mid-sized-city members all Starters, small-city members mostly Starters');
+    var x = scale(0, 1200, L, W - R);
+    [0, 300, 600, 900, 1200].forEach(function (t, i, a) {
+      line(s, x(t), top, x(t), top + rows.length * rowH, 'vz-grid');
+      text(s, x(t), H - 5, N(t), 'vz-t vz-t-muted', i === 0 ? 'start' : i === a.length - 1 ? 'end' : 'middle');
+    });
+    rows.forEach(function (r, i) {
+      var y0 = top + i * rowH, y = y0 + (rowH - barH) / 2, tot = r.starters + r.established, xa = L;
+      text(s, L - 10, y + barH / 2 - 1, r.k, 'vz-t vz-t-strong', 'end');
+      text(s, L - 10, y + barH / 2 + 14, N(tot) + ' members', 'vz-t vz-t-muted', 'end');
+      [[r.starters, 'vz-ctx', 'vz-in-ctx', 'Starters'], [r.established, 'vz-ink', 'vz-in-ink', 'Established']].forEach(function (p) {
+        if (!p[0]) return;
+        var x0 = xa + (xa > L ? gap : 0), w = x(p[0]) - L - (xa > L ? gap : 0);
+        var g = svgEl('g', { 'class': 'vz-mark' }, s);
+        svgEl('path', { d: block(x0, y, w, barH), 'class': p[1] }, g);
+        bind(g, [N(p[0]) + ' ' + p[3], r.k + ' · ' + p1(100 * p[0] / tot) + ' of its members']);
+        var t = text(s, x0 + 9, y + barH / 2 + 4.5, N(p[0]), p[2]);
+        if (t.getComputedTextLength() + 16 > w) { t.remove(); text(s, x0 + w + 6, y + barH / 2 + 4.5, N(p[0]), 'vz-t vz-t-val'); }
+        xa = x0 + w;
+      });
+    });
+    table(fig, ['City size', 'Starters', 'Established', 'Members', 'Established share'], rows.map(function (r) {
+      var tot = r.starters + r.established;
+      return [r.k, N(r.starters), N(r.established), N(tot), p1(100 * r.established / tot)];
+    }), [1, 2, 3, 4]);
+  }
+
+  /* ── 8. One field on its own vs a two-field rule (bars from zero) ── */
+  function fields(fig, host) {
+    var W = host.clientWidth, narrow = W < 540;
+    var singles = DATA.single_fields.slice().sort(function (a, b) { return b.accuracy - a.accuracy; }).map(function (f) {
+      var lab = FIELD[f.k];
+      if (f.k === 'Age') lab += narrow ? ' (40+)' : ' (older than ' + f.cut + ')';
+      if (f.k === 'Income') lab += narrow ? ' (>$130K)' : ' (above ' + usd(f.cut) + ')';
+      return { k: lab, v: f.accuracy, rule: false };
+    });
+    var rows = [{ k: narrow ? 'City + job rule' : 'Big city or skilled job (rule)', v: DATA.rule_city_occupation, rule: true }].concat(singles);
+    var L = narrow ? 112 : 206, R = 54, barH = 14, rowH = 30, head = 18, sep = 10, axisH = 24;
+    var H = head + rows.length * rowH + sep + axisH, yEnd = head + rows.length * rowH + sep;
+    var s = newSvg(host, W, H, 'Share of members a single field, or a rule using city and job type, assigns to the same segment as the clustering');
+    var x = scale(0, 100, L, W - R);
+    [0, 25, 50, 75, 100].forEach(function (t) { line(s, x(t), head, x(t), yEnd, 'vz-grid'); text(s, x(t), H - 5, t + '%', 'vz-t vz-t-muted', 'middle'); });
+    line(s, x(50), head - 4, x(50), yEnd, 'vz-ref');
+    text(s, x(50), head - 8, 'Coin toss', 'vz-t vz-t-muted', 'middle');
+    rows.forEach(function (r, i) {
+      var y0 = head + i * rowH + (i > 0 ? sep : 0), y = y0 + (rowH - barH) / 2;
+      text(s, L - 10, y + barH - 3, r.k, r.rule ? 'vz-t vz-t-strong' : 'vz-t', 'end');
+      var g = svgEl('g', { 'class': 'vz-mark' }, s);
+      svgEl('rect', { x: L, y: y0, width: Math.max(1, x(r.v) - L + 48), height: rowH, 'class': 'vz-hit' }, g);
+      svgEl('path', { d: hbar(L, x(r.v), y, barH), 'class': r.rule ? 'vz-ink' : 'vz-ctx' }, g);
+      bind(g, [p1(r.v) + ' in the same segment', r.rule ? 'Big city, or a skilled or management job, means Established' : r.k + ' on its own']);
+      text(s, x(r.v) + 6, y + barH - 3, p1(r.v), r.rule ? 'vz-t vz-t-val' : 'vz-t vz-t-muted');
+    });
+    line(s, L, head, L, yEnd, 'vz-axis');
+    table(fig, ['Rule', 'Same segment as the clustering'], rows.map(function (r) { return [r.rule ? 'Big city, or a skilled or management job, means Established' : r.k, p1(r.v)]; }), [1]);
+  }
+
+  /* ── 9. How well each member fits (histogram of silhouette) ── */
+  function silhist(fig, host) {
+    var h = DATA.silhouette_hist, lo = -0.10, step = 0.05, W = host.clientWidth, narrow = W < 480;
+    while (h.length && h[h.length - 1] === 0) h = h.slice(0, -1);
+    var hiEdge = lo + h.length * step;
+    var L = 40, R = 6, top = 26, plotH = 190, axisH = 36, H = top + plotH + axisH;
+    var s = newSvg(host, W, H, 'Members by silhouette score: 134 score below 0.25, near the boundary between the segments');
+    var x = scale(lo, hiEdge, L, W - R), y = scale(0, 400, top + plotH, top);
+    [0, 100, 200, 300, 400].forEach(function (t) { line(s, L, y(t), W - R, y(t), 'vz-grid'); text(s, L - 8, y(t) + 4, String(t), 'vz-t vz-t-muted', 'end'); });
+    var below = 0;
+    h.forEach(function (n, i) {
+      var a = lo + i * step, b = a + step, bd = b <= 0.25 + 1e-9;
+      if (bd) below += n;
+      var g = svgEl('g', { 'class': 'vz-mark' }, s);
+      svgEl('rect', { x: x(a), y: top, width: x(b) - x(a), height: plotH, 'class': 'vz-hit' }, g);
+      svgEl('path', { d: vbar(x(a) + 1, Math.max(1, x(b) - x(a) - 2), y(0), y(n)), 'class': bd ? 'vz-ink' : 'vz-ctx' }, g);
+      bind(g, [N(n) + (n === 1 ? ' member' : ' members'), 'Silhouette ' + dec(a) + ' to ' + dec(b) + (bd ? ' · near the boundary' : '')]);
+    });
+    line(s, L, y(0), W - R, y(0), 'vz-axis');
+    line(s, x(0.25), top - 10, x(0.25), top + plotH, 'vz-ref');
+    text(s, x(0.25) - 8, top + 4, (narrow ? N(below) + ' below 0.25' : N(below) + ' members below 0.25'), 'vz-t vz-t-val', 'end');
+    [-0.1, 0, 0.25, 0.5, 0.75].forEach(function (t) { if (t <= hiEdge + 1e-9) text(s, x(t), top + plotH + 18, dec(t), 'vz-t vz-t-muted', 'middle'); });
+    text(s, W - R, top + plotH + 34, 'Silhouette score →', 'vz-t vz-t-muted', 'end');
+    table(fig, ['Silhouette', 'Members', 'Near the boundary'], h.map(function (n, i) {
+      var a = lo + i * step;
+      return [dec(a) + ' to ' + dec(a + step), N(n), a + step <= 0.25 + 1e-9 ? 'Yes' : 'No'];
+    }), [1]);
+  }
+
+  var RENDER = { mix: mix, corr: corr, scatter: scatter, elbow: elbow, agree: agree, profile: profile, city: city, fields: fields, silhist: silhist };
+  var figs = Array.prototype.slice.call(document.querySelectorAll('figure[data-chart]'));
+  function drawAll(force) {
+    figs.forEach(function (fig) {
+      var host = fig.querySelector('.viz-plot');
+      var w = host.clientWidth;
+      if (!w || (!force && host.dataset.w === String(w))) return;
+      host.dataset.w = String(w);
+      RENDER[fig.dataset.chart](fig, host);
+    });
+  }
+  figs.forEach(function (fig) {
+    var b = fig.querySelector('.viz-btn');
+    if (b) b.addEventListener('click', function () {
+      var on = fig.classList.toggle('show-table');
+      b.setAttribute('aria-pressed', on ? 'true' : 'false');
+      b.textContent = on ? 'Chart only' : 'Table';
+    });
+  });
+  var timer = null;
+  window.addEventListener('resize', function () { clearTimeout(timer); timer = setTimeout(function () { drawAll(false); }, 120); });
+  // draw after web fonts load so label measurements are right
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(function () { drawAll(true); });
+  drawAll(true);
+})();
+</script>
+</body>
+</html>
